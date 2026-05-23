@@ -160,9 +160,14 @@ func DiscoverSecrets(root string) (map[string]string, error) {
 				parsed, parseErr = ParseYAMLFile(path)
 			}
 		case ".properties":
-			parsed, parseErr = ParseEnvFile(path)
+			if !isBinaryFile(path) {
+				parsed, parseErr = ParseEnvFile(path)
+			}
 		default:
-			if looksLikeEnvFile(path) {
+			// Only parse env-style files with known env file names (e.g. .env, .env.local).
+			// Do NOT fall back to looksLikeEnvFile() — too many false positives from
+			// Groovy scripts, XML, WSDL, Makefiles, etc. that contain "=" lines.
+			if isKnownEnvFile(base) && !isBinaryFile(path) {
 				parsed, parseErr = ParseEnvFile(path)
 			}
 		}
@@ -304,6 +309,16 @@ func isBinaryFile(path string) bool {
 	return false
 }
 
+// isKnownEnvFile returns true if the filename is a known env-style credentials file.
+// This is intentionally strict: only .env, .env.*, and .envrc are accepted.
+// We do NOT accept arbitrary files with KEY=VALUE lines (too many false positives).
+func isKnownEnvFile(base string) bool {
+	return base == ".env" || base == ".envrc" ||
+		strings.HasPrefix(base, ".env.") ||
+		strings.HasPrefix(base, "env.") ||
+		base == ".netrc"
+}
+
 // looksLikeEnvFile returns true if the file contains at least one KEY=VALUE line.
 func looksLikeEnvFile(path string) bool {
 	if isBinaryFile(path) {
@@ -333,30 +348,139 @@ func looksLikeEnvFile(path string) bool {
 	return false
 }
 
-// isLikelySecret returns true if a value looks like a real secret.
+// isLikelySecret returns true if a value looks like a real secret credential.
+// It uses a positive signal approach: values must show characteristics of real
+// secrets (sufficient length + entropy markers) rather than just "not obviously not a secret".
 func isLikelySecret(v string) bool {
-	if len(v) < 8 {
-		return false
-	}
-	lower := strings.ToLower(v)
-	nonSecrets := []string{
-		"true", "false", "null", "none", "undefined",
-		"localhost", "127.0.0.1", "0.0.0.0",
-	}
-	for _, ns := range nonSecrets {
-		if lower == ns {
+	// Must be printable ASCII only — binary data is never a secret we want to redact
+	for _, c := range v {
+		if c < 0x20 || c > 0x7e {
 			return false
 		}
 	}
-	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") {
+
+	// Minimum length for a meaningful secret
+	if len(v) < 10 {
 		return false
 	}
-	allDigits := true
-	for _, c := range v {
-		if c < '0' || c > '9' {
-			allDigits = false
-			break
+
+	// Skip Spring/shell variable placeholders like ${VAR} or ${VAR:default}
+	if strings.HasPrefix(v, "${") && strings.HasSuffix(v, "}") {
+		return false
+	}
+
+	// Skip URL path templates like /v1/id/%s or /customer/v3/byId
+	if strings.HasPrefix(v, "/") {
+		return false
+	}
+
+	// Skip cron expressions (contain digits and */- patterns)
+	if strings.Contains(v, "* * * *") || strings.Contains(v, "*/") {
+		return false
+	}
+
+	lower := strings.ToLower(v)
+
+	// Hard exclusions — known non-secret values
+	hardExclusions := []string{
+		"true", "false", "null", "none", "undefined", "enabled", "disabled",
+		"localhost", "127.0.0.1", "0.0.0.0", "::1",
+		"development", "production", "staging", "test", "testing",
+		"frontend", "backend", "fullstack",
+		"sameorigin", "nosniff", "strict-origin-when-cross-origin",
+		"info", "debug", "warn", "error", "warning",
+	}
+	for _, ex := range hardExclusions {
+		if lower == ex {
+			return false
 		}
 	}
-	return !allDigits
+
+	// Skip URLs
+	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") ||
+		strings.HasPrefix(lower, "jdbc:") || strings.HasPrefix(lower, "mongodb://") ||
+		strings.HasPrefix(lower, "redis://") || strings.HasPrefix(lower, "amqp://") {
+		return false
+	}
+
+	// Skip values that look like config paths or enum strings:
+	// - Only contains letters, digits, dots, dashes, underscores, slashes, colons
+	// - No mix of cases with digits → not a token/key
+	onlyConfigChars := true
+	hasDigit := false
+	hasUpper := false
+	hasLower := false
+	hasSpecial := false // chars beyond [a-zA-Z0-9._\-/:@]
+	for _, c := range v {
+		switch {
+		case c >= '0' && c <= '9':
+			hasDigit = true
+		case c >= 'A' && c <= 'Z':
+			hasUpper = true
+		case c >= 'a' && c <= 'z':
+			hasLower = true
+		case c == '.' || c == '-' || c == '_' || c == '/' || c == ':' || c == '@':
+			// allowed config chars — keep onlyConfigChars true
+		default:
+			hasSpecial = true
+			onlyConfigChars = false
+		}
+	}
+
+	// Pure config-path values (only letters+dots+dashes+underscores, no digits, no specials)
+	if onlyConfigChars && !hasDigit && !hasSpecial {
+		return false
+	}
+
+	// All-caps with underscores and no digits → looks like an env var name used as value
+	if hasUpper && !hasLower && !hasDigit && !hasSpecial {
+		return false
+	}
+
+	// Values containing spaces are likely descriptions/sentences, not secrets,
+	// unless they have special characters (e.g. regex patterns like "Bearer (?<token>.*)$")
+	if strings.Contains(v, " ") && !hasSpecial {
+		return false
+	}
+
+	// Values that are all-lowercase letters/dots (config enum strings like "sameorigin", "exchangeScope")
+	if !hasUpper && !hasDigit && !hasSpecial && len(v) < 30 {
+		return false
+	}
+
+	// Short values with no special chars or digits are not secrets
+	if !hasDigit && !hasSpecial && len(v) < 20 {
+		return false
+	}
+
+	// Require at least some complexity: either special chars, or mixed case+digits, or long enough.
+	// Real secrets: API keys, tokens, passwords typically have digits + mixed case or special chars.
+	complexityScore := 0
+	if hasDigit {
+		complexityScore++
+	}
+	if hasUpper && hasLower {
+		complexityScore++
+	}
+	if hasSpecial {
+		complexityScore++
+	}
+	if len(v) >= 20 {
+		complexityScore++
+	}
+	if len(v) >= 32 {
+		complexityScore++
+	}
+
+	// Short values need higher complexity (2 signals).
+	// Values ≥ 16 chars with at least one complexity signal are likely secrets.
+	// Values ≥ 10 chars that mix letters AND digits (no pure words, no pure numbers)
+	// are likely tokens/keys even if short (e.g. "abc12345678", "Mb2.r5oHf-0t").
+	if len(v) >= 16 {
+		return complexityScore >= 1
+	}
+	if len(v) >= 10 && hasDigit && (hasLower || hasUpper) {
+		return true
+	}
+	return complexityScore >= 2
 }
