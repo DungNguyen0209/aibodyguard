@@ -1,6 +1,9 @@
 package scanner
 
-import "strings"
+import (
+	"sort"
+	"strings"
+)
 
 // Scanner holds loaded secrets and performs redaction.
 type Scanner struct {
@@ -12,20 +15,38 @@ func New(secrets map[string]string) *Scanner {
 	return &Scanner{secrets: secrets}
 }
 
+// entry is a key-value pair used for sorted processing.
+type entry struct {
+	key string
+	val string
+}
+
 // Redact scans body for any known secret values and replaces them with
-// [REDACTED:<KEY_NAME>]. Returns the (possibly modified) body and the list
-// of key names that were redacted.
+// [REDACTED:<KEY_NAME>]. Secrets are matched longest-value-first to prevent
+// substring collisions. Returns the (possibly modified) body and the sorted
+// list of redacted key names.
 func (s *Scanner) Redact(body string) (string, []string) {
+	// Sort entries by value length descending (longest first)
+	entries := make([]entry, 0, len(s.secrets))
+	for k, v := range s.secrets {
+		entries = append(entries, entry{k, v})
+	}
+	sort.Slice(entries, func(i, j int) bool {
+		return len(entries[i].val) > len(entries[j].val)
+	})
+
 	var redactedKeys []string
 	result := body
 
-	for key, val := range s.secrets {
-		if strings.Contains(result, val) {
-			placeholder := "[REDACTED:" + key + "]"
-			result = strings.ReplaceAll(result, val, placeholder)
-			redactedKeys = append(redactedKeys, key)
+	for _, e := range entries {
+		if strings.Contains(result, e.val) {
+			placeholder := "[REDACTED:" + e.key + "]"
+			result = strings.ReplaceAll(result, e.val, placeholder)
+			redactedKeys = append(redactedKeys, e.key)
 		}
 	}
 
+	// Sort redactedKeys for deterministic output
+	sort.Strings(redactedKeys)
 	return result, redactedKeys
 }

@@ -28,6 +28,18 @@ func TestScanAndRedact(t *testing.T) {
 	if !strings.Contains(result, "[REDACTED:API_KEY]") {
 		t.Error("should contain [REDACTED:API_KEY]")
 	}
+
+	// Check specific keys are in redacted list (sorted, deterministic)
+	redactedSet := make(map[string]bool)
+	for _, k := range redacted {
+		redactedSet[k] = true
+	}
+	if !redactedSet["DB_PASSWORD"] {
+		t.Error("DB_PASSWORD should be in redacted list")
+	}
+	if !redactedSet["API_KEY"] {
+		t.Error("API_KEY should be in redacted list")
+	}
 	if len(redacted) != 2 {
 		t.Errorf("expected 2 redacted keys, got %d: %v", len(redacted), redacted)
 	}
