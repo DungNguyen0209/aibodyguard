@@ -1,0 +1,10 @@
+# Built binary
+aibodyguard
+aibodyguard.exe
+
+# Go build cache
+*.test
+*.out
+
+# macOS
+.DS_Store
