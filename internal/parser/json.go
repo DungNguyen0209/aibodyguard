@@ -2,8 +2,8 @@ package parser
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
-	"strings"
 )
 
 // ParseJSONFile parses a JSON file and returns flattened key=value pairs.
@@ -35,11 +35,14 @@ func flattenJSON(prefix string, v interface{}, out map[string]string) {
 		}
 	case []interface{}:
 		for i, child := range val {
-			key := strings.Join([]string{prefix, string(rune('0' + i))}, ".")
+			key := fmt.Sprintf("%s.%d", prefix, i)
+			if prefix == "" {
+				key = fmt.Sprintf("%d", i)
+			}
 			flattenJSON(key, child, out)
 		}
 	case string:
-		if prefix != "" && val != "" {
+		if prefix != "" {
 			out[prefix] = val
 		}
 	}
