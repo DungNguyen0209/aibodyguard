@@ -10,6 +10,7 @@ import (
 	"encoding/pem"
 	"fmt"
 	"math/big"
+	"net"
 	"time"
 )
 
@@ -78,11 +79,17 @@ func (c *ca) signLeaf(hostname string) (tls.Certificate, error) {
 	tmpl := &x509.Certificate{
 		SerialNumber: serial,
 		Subject:      pkix.Name{CommonName: hostname},
-		DNSNames:     []string{hostname},
 		NotBefore:    time.Now().Add(-time.Minute),
 		NotAfter:     time.Now().Add(24 * time.Hour),
 		KeyUsage:     x509.KeyUsageDigitalSignature,
 		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+	}
+
+	// If hostname is an IP address, set IPAddresses; otherwise set DNSNames.
+	if ip := net.ParseIP(hostname); ip != nil {
+		tmpl.IPAddresses = []net.IP{ip}
+	} else {
+		tmpl.DNSNames = []string{hostname}
 	}
 
 	certDER, err := x509.CreateCertificate(rand.Reader, tmpl, c.cert, &key.PublicKey, c.key)
