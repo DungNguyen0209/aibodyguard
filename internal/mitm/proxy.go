@@ -187,13 +187,13 @@ func (p *mitmProxy) proxyHTTP(clientConn, upstreamConn net.Conn, hostname string
 
 		fmt.Fprintf(p.log, "[aibodyguard] ← %d %s\n", resp.StatusCode, resp.Status)
 
-		// Write status line + headers, then stream body directly.
-		// We do NOT use resp.Write() because for chunked/streaming responses
-		// it still buffers. Instead write manually and io.Copy the body.
-		fmt.Fprintf(clientConn, "HTTP/%d.%d %d %s\r\n", resp.ProtoMajor, resp.ProtoMinor, resp.StatusCode, http.StatusText(resp.StatusCode))
-		resp.Header.Write(clientConn) //nolint:errcheck
-		fmt.Fprint(clientConn, "\r\n")
-		io.Copy(clientConn, resp.Body) //nolint:errcheck
+		// Use resp.Write — it correctly handles Transfer-Encoding: chunked,
+		// Content-Length, and streaming. It calls io.Copy internally so it
+		// does not buffer the full body before writing.
+		if err := resp.Write(clientConn); err != nil {
+			resp.Body.Close()
+			return
+		}
 		resp.Body.Close()
 
 		// If connection is not keep-alive, stop
