@@ -37,7 +37,7 @@ func TestDiscoverSecrets(t *testing.T) {
 		t.Fatalf("failed to write node_modules/secret.env: %v", err)
 	}
 
-	secrets, err := DiscoverSecrets(tmp)
+	secrets, err := New().Discover(tmp)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
