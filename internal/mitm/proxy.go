@@ -106,6 +106,7 @@ func (p *mitmProxy) handleConn(clientConn net.Conn) {
 
 	tlsClientConn := tls.Server(clientConn, &tls.Config{
 		Certificates: []tls.Certificate{leafCert},
+		NextProtos:   []string{"http/1.1"},
 	})
 	if err := tlsClientConn.Handshake(); err != nil {
 		fmt.Fprintf(p.log, "[aibodyguard] TLS handshake with client for %s: %v\n", hostname, err)
@@ -113,10 +114,14 @@ func (p *mitmProxy) handleConn(clientConn net.Conn) {
 	}
 	defer tlsClientConn.Close()
 
-	// Connect to real upstream over TLS
+	// Connect to real upstream over TLS.
+	// Force HTTP/1.1 via NextProtos — http.ReadResponse cannot parse HTTP/2 frames.
 	upstreamTLSConf := p.upstreamTLSConf
 	if upstreamTLSConf == nil {
-		upstreamTLSConf = &tls.Config{ServerName: hostname}
+		upstreamTLSConf = &tls.Config{
+			ServerName: hostname,
+			NextProtos: []string{"http/1.1"},
+		}
 	}
 	upstreamConn, err := tls.Dial("tcp", host, upstreamTLSConf)
 	if err != nil {
@@ -173,10 +178,13 @@ func (p *mitmProxy) proxyHTTP(clientConn, upstreamConn net.Conn, hostname string
 
 		fmt.Fprintf(p.log, "[aibodyguard] ← %d %s\n", resp.StatusCode, resp.Status)
 
-		if err := resp.Write(clientConn); err != nil {
-			resp.Body.Close()
-			return
-		}
+		// Write status line + headers, then stream body directly.
+		// We do NOT use resp.Write() because for chunked/streaming responses
+		// it still buffers. Instead write manually and io.Copy the body.
+		fmt.Fprintf(clientConn, "HTTP/%d.%d %d %s\r\n", resp.ProtoMajor, resp.ProtoMinor, resp.StatusCode, http.StatusText(resp.StatusCode))
+		resp.Header.Write(clientConn) //nolint:errcheck
+		fmt.Fprint(clientConn, "\r\n")
+		io.Copy(clientConn, resp.Body) //nolint:errcheck
 		resp.Body.Close()
 
 		// If connection is not keep-alive, stop
