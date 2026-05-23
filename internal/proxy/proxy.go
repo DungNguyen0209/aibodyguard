@@ -18,6 +18,9 @@ var realAPIHosts = map[string]string{
 	"openai":    "https://api.openai.com",
 }
 
+// httpClient is a shared HTTP client that reuses TCP connections.
+var httpClient = &http.Client{}
+
 // Proxy is the local HTTP server that intercepts LLM API calls.
 type Proxy struct {
 	scanner *scanner.Scanner
@@ -56,13 +59,14 @@ func (p *Proxy) Shutdown() {
 }
 
 func (p *Proxy) handle(w http.ResponseWriter, r *http.Request) {
+	defer r.Body.Close()
+
 	// Read request body (limit to 10MB)
 	bodyBytes, err := io.ReadAll(io.LimitReader(r.Body, 10*1024*1024))
 	if err != nil {
 		http.Error(w, "failed to read request body", http.StatusInternalServerError)
 		return
 	}
-	r.Body.Close()
 
 	// Redact secrets
 	bodyStr := string(bodyBytes)
@@ -76,7 +80,7 @@ func (p *Proxy) handle(w http.ResponseWriter, r *http.Request) {
 
 	// Build upstream request
 	upstreamURL := targetBase + r.URL.RequestURI()
-	upstreamReq, err := http.NewRequest(r.Method, upstreamURL, bytes.NewBufferString(cleaned))
+	upstreamReq, err := http.NewRequestWithContext(r.Context(), r.Method, upstreamURL, bytes.NewBufferString(cleaned))
 	if err != nil {
 		http.Error(w, "failed to build upstream request", http.StatusInternalServerError)
 		return
@@ -91,8 +95,7 @@ func (p *Proxy) handle(w http.ResponseWriter, r *http.Request) {
 	upstreamReq.ContentLength = int64(len(cleaned))
 
 	// Forward to real API
-	client := &http.Client{}
-	resp, err := client.Do(upstreamReq)
+	resp, err := httpClient.Do(upstreamReq)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("upstream error: %v", err), http.StatusBadGateway)
 		return
