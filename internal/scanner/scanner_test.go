@@ -11,7 +11,7 @@ func TestScanAndRedact(t *testing.T) {
 		"API_KEY":      "sk-abc123xyz456",
 		"database.url": "postgres://supersecret123@localhost/db",
 	}
-	s := New(secrets)
+	var s Scanner = New(secrets)
 
 	body := `{"messages":[{"role":"user","content":"my password is supersecret123 and key sk-abc123xyz456"}]}`
 	result, redacted := s.Redact(body)
@@ -29,7 +29,6 @@ func TestScanAndRedact(t *testing.T) {
 		t.Error("should contain [REDACTED:API_KEY]")
 	}
 
-	// Check specific keys are in redacted list (sorted, deterministic)
 	redactedSet := make(map[string]bool)
 	for _, k := range redacted {
 		redactedSet[k] = true
@@ -49,7 +48,7 @@ func TestScanAndRedactNoMatch(t *testing.T) {
 	secrets := map[string]string{
 		"DB_PASSWORD": "supersecret123",
 	}
-	s := New(secrets)
+	var s Scanner = New(secrets)
 
 	body := `{"messages":[{"role":"user","content":"nothing secret here"}]}`
 	result, redacted := s.Redact(body)

@@ -5,14 +5,19 @@ import (
 	"strings"
 )
 
-// Scanner holds loaded secrets and performs redaction.
-type Scanner struct {
-	secrets map[string]string // key name -> secret value
+// Scanner redacts known secret values from arbitrary text.
+type Scanner interface {
+	Redact(input string) (cleaned string, redactedKeys []string)
 }
 
-// New creates a Scanner loaded with the given secrets map.
-func New(secrets map[string]string) *Scanner {
-	return &Scanner{secrets: secrets}
+// New returns a Scanner loaded with the given secrets map.
+func New(secrets map[string]string) Scanner {
+	return &redactScanner{secrets: secrets}
+}
+
+// redactScanner is the concrete implementation of Scanner.
+type redactScanner struct {
+	secrets map[string]string
 }
 
 // entry is a key-value pair used for sorted processing.
@@ -25,8 +30,7 @@ type entry struct {
 // [REDACTED:<KEY_NAME>]. Secrets are matched longest-value-first to prevent
 // substring collisions. Returns the (possibly modified) body and the sorted
 // list of redacted key names.
-func (s *Scanner) Redact(body string) (string, []string) {
-	// Sort entries by value length descending (longest first)
+func (s *redactScanner) Redact(body string) (string, []string) {
 	entries := make([]entry, 0, len(s.secrets))
 	for k, v := range s.secrets {
 		entries = append(entries, entry{k, v})
@@ -46,7 +50,6 @@ func (s *Scanner) Redact(body string) (string, []string) {
 		}
 	}
 
-	// Sort redactedKeys for deterministic output
 	sort.Strings(redactedKeys)
 	return result, redactedKeys
 }
