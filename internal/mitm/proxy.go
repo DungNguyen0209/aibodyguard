@@ -138,11 +138,17 @@ func (p *mitmProxy) handleConn(clientConn net.Conn) {
 // upstreamConn, and streams responses back. Handles multiple requests (keep-alive).
 func (p *mitmProxy) proxyHTTP(clientConn, upstreamConn net.Conn, hostname string) {
 	clientReader := bufio.NewReader(clientConn)
+	upstreamReader := bufio.NewReader(upstreamConn) // reuse across requests
 
 	for {
 		req, err := http.ReadRequest(clientReader)
 		if err != nil {
 			return
+		}
+
+		// Fix Host header — http.ReadRequest may leave it empty for HTTP/1.0
+		if req.Host == "" {
+			req.Host = hostname
 		}
 
 		// Read and redact body
@@ -160,16 +166,19 @@ func (p *mitmProxy) proxyHTTP(clientConn, upstreamConn net.Conn, hostname string
 
 		fmt.Fprintf(p.log, "[aibodyguard] → %s https://%s%s\n", req.Method, hostname, req.URL.RequestURI())
 
-		// Forward request to upstream
+		// Forward request to upstream.
+		// req.URL from http.ReadRequest has no scheme/host (it's a tunnel request),
+		// so req.Write produces a correct relative-path HTTP/1.1 request line.
 		req.Body = io.NopCloser(bytes.NewBufferString(cleaned))
 		req.ContentLength = int64(len(cleaned))
+		// Remove proxy-specific headers that shouldn't reach the upstream
+		req.Header.Del("Proxy-Connection")
 		if err := req.Write(upstreamConn); err != nil {
 			fmt.Fprintf(p.log, "[aibodyguard] write upstream: %v\n", err)
 			return
 		}
 
 		// Read and stream response back to client
-		upstreamReader := bufio.NewReader(upstreamConn)
 		resp, err := http.ReadResponse(upstreamReader, req)
 		if err != nil {
 			fmt.Fprintf(p.log, "[aibodyguard] read upstream response: %v\n", err)
