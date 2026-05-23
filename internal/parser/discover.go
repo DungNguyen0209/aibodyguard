@@ -66,8 +66,32 @@ func DiscoverSecrets(root string) (map[string]string, error) {
 	return all, err
 }
 
+// isBinaryFile returns true if the file appears to be binary (contains null bytes in first 512 bytes).
+func isBinaryFile(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	buf := make([]byte, 512)
+	n, err := f.Read(buf)
+	if err != nil && n == 0 {
+		return false
+	}
+	for _, b := range buf[:n] {
+		if b == 0 {
+			return true
+		}
+	}
+	return false
+}
+
 // looksLikeEnvFile returns true if the file contains at least one KEY=VALUE line.
 func looksLikeEnvFile(path string) bool {
+	if isBinaryFile(path) {
+		return false
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		return false
