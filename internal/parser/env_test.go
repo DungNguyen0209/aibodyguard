@@ -19,7 +19,9 @@ JAVA_PROP=somevalue
 `
 	tmp := t.TempDir()
 	f := filepath.Join(tmp, ".env")
-	os.WriteFile(f, []byte(content), 0644)
+	if err := os.WriteFile(f, []byte(content), 0644); err != nil {
+		t.Fatalf("failed to write temp file: %v", err)
+	}
 
 	got, err := ParseEnvFile(f)
 	if err != nil {
