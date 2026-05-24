@@ -7,49 +7,51 @@ import (
 
 // Scanner redacts known secret values from arbitrary text.
 type Scanner interface {
-	Redact(input string) (cleaned string, redactedKeys []string)
+	Redact(input string) (cleaned string, redactedValues []string)
 }
 
 // New returns a Scanner loaded with the given secrets map.
-func New(secrets map[string]string) Scanner {
-	return &redactScanner{secrets: secrets}
+// All distinct values across all keys are flattened into a hash set for O(1) dedup.
+func New(secrets map[string][]string) Scanner {
+	seen := make(map[string]struct{})
+	for _, vals := range secrets {
+		for _, v := range vals {
+			if v != "" {
+				seen[v] = struct{}{}
+			}
+		}
+	}
+	return &redactScanner{values: seen}
 }
 
 // redactScanner is the concrete implementation of Scanner.
 type redactScanner struct {
-	secrets map[string]string
+	values map[string]struct{} // hash set of all secret values
 }
 
-// entry is a key-value pair used for sorted processing.
-type entry struct {
-	key string
-	val string
-}
-
-// Redact scans body for any known secret values and replaces them with
-// [REDACTED:<KEY_NAME>]. Secrets are matched longest-value-first to prevent
-// substring collisions. Returns the (possibly modified) body and the sorted
-// list of redacted key names.
+// Redact scans body for any known secret values and replaces them with ****.
+// Values are matched longest-first to prevent substring collisions.
+// Returns the (possibly modified) body and the sorted list of matched secret values.
 func (s *redactScanner) Redact(body string) (string, []string) {
-	entries := make([]entry, 0, len(s.secrets))
-	for k, v := range s.secrets {
-		entries = append(entries, entry{k, v})
+	// Build sorted slice from hash set — longest value first
+	vals := make([]string, 0, len(s.values))
+	for v := range s.values {
+		vals = append(vals, v)
 	}
-	sort.Slice(entries, func(i, j int) bool {
-		return len(entries[i].val) > len(entries[j].val)
+	sort.Slice(vals, func(i, j int) bool {
+		return len(vals[i]) > len(vals[j])
 	})
 
-	var redactedKeys []string
+	var matched []string
 	result := body
 
-	for _, e := range entries {
-		if strings.Contains(result, e.val) {
-			placeholder := "****"
-			result = strings.ReplaceAll(result, e.val, placeholder)
-			redactedKeys = append(redactedKeys, e.key)
+	for _, v := range vals {
+		if strings.Contains(result, v) {
+			result = strings.ReplaceAll(result, v, "****")
+			matched = append(matched, v)
 		}
 	}
 
-	sort.Strings(redactedKeys)
-	return result, redactedKeys
+	sort.Strings(matched)
+	return result, matched
 }
