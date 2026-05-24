@@ -93,6 +93,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "  MITM proxy     : %s\n", proxyAddr)
 	fmt.Fprintf(os.Stderr, "  CA cert        : %s\n", caPath)
 	fmt.Fprintf(os.Stderr, "  Log            : %s\n", logPath)
+	fmt.Fprintf(os.Stderr, "  Request log    : /tmp/aibodyguard-requests.log\n")
 	fmt.Fprintf(os.Stderr, "  ─────────────────────────────────────────\n")
 	fmt.Fprintf(os.Stderr, "\n")
 

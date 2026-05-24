@@ -40,6 +40,8 @@ func New(s Redactor, log io.Writer, cfg *Config) (MITM, error) {
 	if err != nil {
 		fmt.Fprintf(log, "[aibodyguard] WARNING: could not open request log %s: %v\n", path, err)
 		reqLogger = nil
+	} else {
+		fmt.Fprintf(log, "[aibodyguard] request log: %s\n", path)
 	}
 
 	return newMITMProxyWithUpstreamTLSAndLogger(s, log, nil, reqLogger)
