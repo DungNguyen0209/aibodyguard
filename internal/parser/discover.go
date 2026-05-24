@@ -14,7 +14,7 @@ type fileParser struct{}
 
 // Discover walks root recursively, parses all credential files,
 // and returns a merged map of key -> secret value.
-func (p *fileParser) Discover(root string) (map[string]string, error) {
+func (p *fileParser) Discover(root string) (map[string][]string, error) {
 	return DiscoverSecrets(root)
 }
 
@@ -113,8 +113,8 @@ var sourceCodeExts = map[string]bool{
 // DiscoverSecrets walks root recursively, parses all credential files,
 // and returns a merged map of key -> secret value.
 // Values that are too short or look like non-secrets are filtered out.
-func DiscoverSecrets(root string) (map[string]string, error) {
-	all := make(map[string]string)
+func DiscoverSecrets(root string) (map[string][]string, error) {
+	all := make(map[string][]string)
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -179,7 +179,16 @@ func DiscoverSecrets(root string) (map[string]string, error) {
 
 		for k, v := range parsed {
 			if isLikelySecret(v) {
-				all[k] = v
+				already := false
+				for _, existing := range all[k] {
+					if existing == v {
+						already = true
+						break
+					}
+				}
+				if !already {
+					all[k] = append(all[k], v)
+				}
 			}
 		}
 		return nil

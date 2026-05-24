@@ -42,19 +42,101 @@ func TestDiscoverSecrets(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if secrets["SECRET_KEY"] != "abc12345678" {
-		t.Errorf("missing SECRET_KEY, got: %v", secrets["SECRET_KEY"])
+	checkContains := func(key, want string) {
+		t.Helper()
+		vals, ok := secrets[key]
+		if !ok {
+			t.Errorf("key %q not found in secrets", key)
+			return
+		}
+		for _, v := range vals {
+			if v == want {
+				return
+			}
+		}
+		t.Errorf("key %q does not contain value %q, got: %v", key, want, vals)
 	}
-	if secrets["token"] != "json-token-xyz9876" {
-		t.Errorf("missing token, got: %v", secrets["token"])
-	}
-	if secrets["api_key"] != "yaml-key-qwerty123" {
-		t.Errorf("missing api_key, got: %v", secrets["api_key"])
-	}
-	if secrets["db.password"] != "props-pass-abc456" {
-		t.Errorf("missing db.password, got: %v", secrets["db.password"])
-	}
+
+	checkContains("SECRET_KEY", "abc12345678")
+	checkContains("token", "json-token-xyz9876")
+	checkContains("api_key", "yaml-key-qwerty123")
+	checkContains("db.password", "props-pass-abc456")
+
 	if _, ok := secrets["SKIP"]; ok {
 		t.Error("node_modules secret should not be loaded")
+	}
+}
+
+func TestDiscoverSecrets_DuplicateKey(t *testing.T) {
+	tmp := t.TempDir()
+
+	sub1 := filepath.Join(tmp, "svc1")
+	sub2 := filepath.Join(tmp, "svc2")
+	if err := os.MkdirAll(sub1, 0755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(sub2, 0755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Same key, different values in two different files
+	if err := os.WriteFile(filepath.Join(sub1, "secrets.yaml"), []byte("JDBC_URL: jdbc:mysql://host1/db1abc12345\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub2, "secrets.yaml"), []byte("JDBC_URL: jdbc:mysql://host2/db2abc12345\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	secrets, err := New().Discover(tmp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	vals := secrets["JDBC_URL"]
+	if len(vals) != 2 {
+		t.Errorf("expected 2 values for JDBC_URL, got %d: %v", len(vals), vals)
+	}
+
+	found1, found2 := false, false
+	for _, v := range vals {
+		if v == "jdbc:mysql://host1/db1abc12345" {
+			found1 = true
+		}
+		if v == "jdbc:mysql://host2/db2abc12345" {
+			found2 = true
+		}
+	}
+	if !found1 {
+		t.Error("missing jdbc:mysql://host1/db1abc12345")
+	}
+	if !found2 {
+		t.Error("missing jdbc:mysql://host2/db2abc12345")
+	}
+}
+
+func TestDiscoverSecrets_DuplicateValue(t *testing.T) {
+	tmp := t.TempDir()
+
+	sub1 := filepath.Join(tmp, "svc1")
+	sub2 := filepath.Join(tmp, "svc2")
+	os.MkdirAll(sub1, 0755)
+	os.MkdirAll(sub2, 0755)
+
+	// Same key, same value in two files — should deduplicate
+	if err := os.WriteFile(filepath.Join(sub1, "secrets.yaml"), []byte("API_KEY: sk-abc123xyz456\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sub2, "secrets.yaml"), []byte("API_KEY: sk-abc123xyz456\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	secrets, err := New().Discover(tmp)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	vals := secrets["API_KEY"]
+	if len(vals) != 1 {
+		t.Errorf("expected 1 deduplicated value for API_KEY, got %d: %v", len(vals), vals)
 	}
 }
