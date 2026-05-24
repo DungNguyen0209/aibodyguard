@@ -22,11 +22,10 @@ func TestScanAndRedact(t *testing.T) {
 	if strings.Contains(result, "sk-abc123xyz456") {
 		t.Error("sk-abc123xyz456 should be redacted")
 	}
-	if !strings.Contains(result, "[REDACTED:DB_PASSWORD]") {
-		t.Error("should contain [REDACTED:DB_PASSWORD]")
-	}
-	if !strings.Contains(result, "[REDACTED:API_KEY]") {
-		t.Error("should contain [REDACTED:API_KEY]")
+	// Each matched secret should be replaced with ****
+	count := strings.Count(result, "****")
+	if count != 2 {
+		t.Errorf("expected 2 occurrences of ****, got %d in: %s", count, result)
 	}
 
 	redactedSet := make(map[string]bool)

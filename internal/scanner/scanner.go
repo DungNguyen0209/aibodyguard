@@ -44,7 +44,7 @@ func (s *redactScanner) Redact(body string) (string, []string) {
 
 	for _, e := range entries {
 		if strings.Contains(result, e.val) {
-			placeholder := "[REDACTED:" + e.key + "]"
+			placeholder := "****"
 			result = strings.ReplaceAll(result, e.val, placeholder)
 			redactedKeys = append(redactedKeys, e.key)
 		}
