@@ -69,16 +69,28 @@ func main() {
 
 	// Log all discovered secrets (keys + real values) for debugging
 	if len(secrets) == 0 {
-		fmt.Fprintf(logWriter, "[aibodyguard] discovered secrets (0): none\n")
+		fmt.Fprintf(logWriter, "[aibodyguard] discovered secrets (0 keys): none\n")
 	} else {
-		fmt.Fprintf(logWriter, "[aibodyguard] discovered secrets (%d):\n", len(secrets))
+		totalVals := 0
+		for _, vals := range secrets {
+			totalVals += len(vals)
+		}
+		fmt.Fprintf(logWriter, "[aibodyguard] discovered secrets (%d keys, %d unique values):\n", len(secrets), totalVals)
 		keys := make([]string, 0, len(secrets))
 		for k := range secrets {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
 		for _, k := range keys {
-			fmt.Fprintf(logWriter, "[aibodyguard]   %s = %s\n", k, secrets[k])
+			vals := secrets[k]
+			if len(vals) == 1 {
+				fmt.Fprintf(logWriter, "[aibodyguard]   %s (1 value):\n", k)
+			} else {
+				fmt.Fprintf(logWriter, "[aibodyguard]   %s (%d values):\n", k, len(vals))
+			}
+			for _, v := range vals {
+				fmt.Fprintf(logWriter, "[aibodyguard]     %s\n", v)
+			}
 		}
 	}
 
