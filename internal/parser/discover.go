@@ -285,6 +285,10 @@ func isCredentialYAML(base string) bool {
 			return true
 		}
 	}
+	// Any filename containing "value" (e.g. gots-values.yaml, myapp-values-prod.yml)
+	if strings.Contains(base, "value") {
+		return true
+	}
 	return false
 }
 
@@ -396,9 +400,9 @@ func isLikelySecret(v string) bool {
 		}
 	}
 
-	// Skip URLs
+	// Skip URLs (but keep JDBC — they contain hostnames and credentials)
 	if strings.HasPrefix(lower, "http://") || strings.HasPrefix(lower, "https://") ||
-		strings.HasPrefix(lower, "jdbc:") || strings.HasPrefix(lower, "mongodb://") ||
+		strings.HasPrefix(lower, "mongodb://") ||
 		strings.HasPrefix(lower, "redis://") || strings.HasPrefix(lower, "amqp://") {
 		return false
 	}
