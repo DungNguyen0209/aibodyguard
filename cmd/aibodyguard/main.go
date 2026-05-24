@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"syscall"
 	"time"
 
@@ -64,6 +65,21 @@ func main() {
 	secrets, err := parser.New().Discover(cwd)
 	if err != nil {
 		fmt.Fprintf(logWriter, "[aibodyguard] warning: partial scan error: %v\n", err)
+	}
+
+	// Log all discovered secrets (keys + real values) for debugging
+	if len(secrets) == 0 {
+		fmt.Fprintf(logWriter, "[aibodyguard] discovered secrets (0): none\n")
+	} else {
+		fmt.Fprintf(logWriter, "[aibodyguard] discovered secrets (%d):\n", len(secrets))
+		keys := make([]string, 0, len(secrets))
+		for k := range secrets {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		for _, k := range keys {
+			fmt.Fprintf(logWriter, "[aibodyguard]   %s = %s\n", k, secrets[k])
+		}
 	}
 
 	// Start TLS MITM proxy
