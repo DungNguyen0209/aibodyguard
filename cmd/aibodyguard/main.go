@@ -68,7 +68,7 @@ func main() {
 
 	// Start TLS MITM proxy
 	s := scanner.New(secrets)
-	p, err := mitm.New(s, logWriter)
+	p, err := mitm.New(s, logWriter, nil)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "aibodyguard: error starting proxy: %v\n", err)
 		os.Exit(1)

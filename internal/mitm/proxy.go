@@ -10,6 +10,9 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
+
+	"github.com/yourusername/aibodyguard/internal/logger"
 )
 
 // mitmProxy is the concrete MITM implementation.
@@ -17,6 +20,7 @@ type mitmProxy struct {
 	ca              *ca
 	scanner         Redactor
 	log             io.Writer
+	reqLogger       *logger.RequestLogger // may be nil
 	listener        net.Listener
 	port            int
 	once            sync.Once
@@ -24,10 +28,14 @@ type mitmProxy struct {
 }
 
 func newMITMProxy(s Redactor, log io.Writer) (MITM, error) {
-	return newMITMProxyWithUpstreamTLS(s, log, nil)
+	return newMITMProxyWithUpstreamTLSAndLogger(s, log, nil, nil)
 }
 
 func newMITMProxyWithUpstreamTLS(s Redactor, log io.Writer, upstreamTLS *tls.Config) (MITM, error) {
+	return newMITMProxyWithUpstreamTLSAndLogger(s, log, upstreamTLS, nil)
+}
+
+func newMITMProxyWithUpstreamTLSAndLogger(s Redactor, log io.Writer, upstreamTLS *tls.Config, reqLogger *logger.RequestLogger) (MITM, error) {
 	authority, err := generateCA()
 	if err != nil {
 		return nil, fmt.Errorf("generate CA: %w", err)
@@ -42,6 +50,7 @@ func newMITMProxyWithUpstreamTLS(s Redactor, log io.Writer, upstreamTLS *tls.Con
 		ca:              authority,
 		scanner:         s,
 		log:             log,
+		reqLogger:       reqLogger,
 		listener:        ln,
 		port:            ln.Addr().(*net.TCPAddr).Port,
 		upstreamTLSConf: upstreamTLS,
@@ -162,6 +171,26 @@ func (p *mitmProxy) proxyHTTP(clientConn, upstreamConn net.Conn, hostname string
 		cleaned, redacted := p.scanner.Redact(string(bodyBytes))
 		for _, key := range redacted {
 			fmt.Fprintf(p.log, "[aibodyguard] redacted: %s\n", key)
+		}
+
+		// Log the full request entry
+		if p.reqLogger != nil {
+			keys := redacted
+			if keys == nil {
+				keys = []string{}
+			}
+			entry := logger.RequestEntry{
+				Timestamp:    time.Now().UTC(),
+				Method:       req.Method,
+				URL:          "https://" + hostname + req.URL.RequestURI(),
+				Headers:      req.Header.Clone(),
+				BodyOriginal: string(bodyBytes),
+				BodyRedacted: cleaned,
+				RedactedKeys: keys,
+			}
+			if err := p.reqLogger.Log(entry); err != nil {
+				fmt.Fprintf(p.log, "[aibodyguard] request log write error: %v\n", err)
+			}
 		}
 
 		fmt.Fprintf(p.log, "[aibodyguard] → %s https://%s%s\n", req.Method, hostname, req.URL.RequestURI())

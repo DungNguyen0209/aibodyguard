@@ -25,7 +25,7 @@ func (m *mockRedactor) Redact(input string) (string, []string) {
 }
 
 func TestMITMProxyInterface(t *testing.T) {
-	p, err := New(&mockRedactor{}, io.Discard)
+	p, err := New(&mockRedactor{}, io.Discard, nil)
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
