@@ -140,3 +140,39 @@ func TestDiscoverSecrets_DuplicateValue(t *testing.T) {
 		t.Errorf("expected 1 deduplicated value for API_KEY, got %d: %v", len(vals), vals)
 	}
 }
+
+func TestDiscoverSecrets_SettingFilename(t *testing.T) {
+	tmp := t.TempDir()
+
+	// YAML with "setting" in name
+	if err := os.WriteFile(filepath.Join(tmp, "appsettings-prod.yaml"), []byte("db_password: prodPass9876xyz\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// JSON with "setting" in name
+	if err := os.WriteFile(filepath.Join(tmp, "site-settings.json"), []byte(`{"api_token":"tok-settingTest1234"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	secrets, err := New().Discover(tmp)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	checkContains := func(key, want string) {
+		t.Helper()
+		vals, ok := secrets[key]
+		if !ok {
+			t.Errorf("key %q not found in secrets", key)
+			return
+		}
+		for _, v := range vals {
+			if v == want {
+				return
+			}
+		}
+		t.Errorf("key %q does not contain %q, got: %v", key, want, vals)
+	}
+
+	checkContains("db_password", "prodPass9876xyz")
+	checkContains("api_token", "tok-settingTest1234")
+}

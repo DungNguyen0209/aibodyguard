@@ -244,6 +244,10 @@ func isCredentialJSON(base string) bool {
 			return true
 		}
 	}
+	// Any filename containing "setting" (e.g. appsettings-local.json, site-settings.json)
+	if strings.Contains(base, "setting") {
+		return true
+	}
 	return false
 }
 
@@ -294,8 +298,8 @@ func isCredentialYAML(base string) bool {
 			return true
 		}
 	}
-	// Any filename containing "value" (e.g. gots-values.yaml, myapp-values-prod.yml)
-	if strings.Contains(base, "value") {
+	// Any filename containing "value" or "setting" (e.g. gots-values.yaml, appsettings-prod.yml)
+	if strings.Contains(base, "value") || strings.Contains(base, "setting") {
 		return true
 	}
 	return false
