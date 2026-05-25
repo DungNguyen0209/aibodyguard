@@ -74,7 +74,34 @@ No quarantine warning, auto-updates with `brew upgrade`.
 > sha256sum -c checksums.txt
 > ```
 
-### Build from source
+---
+
+## Uninstall
+
+### Homebrew
+
+```bash
+brew uninstall aibodyguard
+brew untap DungNguyen0209/tap  # optional — removes the tap entirely
+```
+
+### Manual binary
+
+```bash
+sudo rm /usr/local/bin/aibodyguard
+```
+
+### Clean up logs
+
+```bash
+rm -f /tmp/aibodyguard.log
+rm -f /tmp/aibodyguard-requests.log
+rm -f /tmp/aibodyguard-ca.pem
+```
+
+---
+
+## Build from source
 
 Requires Go 1.22+.
 
