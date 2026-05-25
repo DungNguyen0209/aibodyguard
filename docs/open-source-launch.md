@@ -10,8 +10,8 @@ Right now `go.mod` uses a placeholder module path. Before publishing, replace it
 
 ```bash
 # Replace throughout the codebase
-find . -type f -name "*.go" | xargs sed -i '' 's|github.com/yourusername/aibodyguard|github.com/YOUR_GITHUB_USERNAME/aibodyguard|g'
-sed -i '' 's|github.com/yourusername/aibodyguard|github.com/YOUR_GITHUB_USERNAME/aibodyguard|g' go.mod
+find . -type f -name "*.go" | xargs sed -i '' 's|github.com/DungNguyen0209/aibodyguard|github.com/YOUR_GITHUB_USERNAME/aibodyguard|g'
+sed -i '' 's|github.com/DungNguyen0209/aibodyguard|github.com/YOUR_GITHUB_USERNAME/aibodyguard|g' go.mod
 ```
 
 Also update the install URL in `README.md` to match.

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/yourusername/aibodyguard/internal/logger"
+	"github.com/DungNguyen0209/aibodyguard/internal/logger"
 )
 
 // MITM is a TLS-intercepting CONNECT proxy.

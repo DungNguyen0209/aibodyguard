@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yourusername/aibodyguard/internal/logger"
+	"github.com/DungNguyen0209/aibodyguard/internal/logger"
 )
 
 // mitmProxy is the concrete MITM implementation.

@@ -1,4 +1,4 @@
-module github.com/yourusername/aibodyguard
+module github.com/DungNguyen0209/aibodyguard
 
 go 1.26.3
 

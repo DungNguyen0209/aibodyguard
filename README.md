@@ -17,7 +17,7 @@ AIBodyguard sits between your coding agent (OpenCode, Claude Code, etc.) and the
 ### Build from source
 
 ```bash
-git clone https://github.com/yourusername/aibodyguard.git
+git clone https://github.com/DungNguyen0209/aibodyguard.git
 cd aibodyguard
 go build -o aibodyguard ./cmd/aibodyguard/
 sudo mv aibodyguard /usr/local/bin/

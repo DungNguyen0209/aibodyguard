@@ -11,10 +11,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/yourusername/aibodyguard/internal/agentconfig"
-	"github.com/yourusername/aibodyguard/internal/mitm"
-	"github.com/yourusername/aibodyguard/internal/parser"
-	"github.com/yourusername/aibodyguard/internal/scanner"
+	"github.com/DungNguyen0209/aibodyguard/internal/agentconfig"
+	"github.com/DungNguyen0209/aibodyguard/internal/mitm"
+	"github.com/DungNguyen0209/aibodyguard/internal/parser"
+	"github.com/DungNguyen0209/aibodyguard/internal/scanner"
 )
 
 func main() {

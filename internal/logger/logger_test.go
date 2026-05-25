@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yourusername/aibodyguard/internal/logger"
+	"github.com/DungNguyen0209/aibodyguard/internal/logger"
 )
 
 func TestRequestLogger_WritesJSONLine(t *testing.T) {
