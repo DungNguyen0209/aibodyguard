@@ -17,9 +17,6 @@
 
 ---
 
-<!-- Replace with a terminal screenshot or demo GIF showing the startup banner and a redaction event -->
-<!-- Recommended: use `vhs` (https://github.com/charmbracelet/vhs) to record a terminal demo -->
-<!-- Example: aibodyguard --test claude, then send a message containing a secret -->
 ![AIBodyguard in action](docs/assets/demo.png)
 
 ---
@@ -142,7 +139,7 @@ tail -f /tmp/aibodyguard-requests.log | jq .
   AIBodyguard v0.1.0  active
   ─────────────────────────────────────────
   Tool           : claude
-  Secrets loaded : 315 values
+  Secrets loaded : 42 values
   Mode           : TEST (request log active)
   Request log    : /tmp/aibodyguard-requests.log
   MITM proxy     : http://127.0.0.1:58368
