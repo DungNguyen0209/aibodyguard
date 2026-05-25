@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="docs/assets/logo.svg" alt="AIBodyguard" width="120">
-</p>
-
 <h3 align="center">AIBodyguard</h3>
 
 <p align="center">Credential leak prevention for AI coding agents.</p>
@@ -36,26 +32,6 @@ No agent configuration needed. Just prefix your command.
 aibodyguard claude
 aibodyguard opencode
 ```
-
----
-
-## How It Works
-
-```
-Your project files          AIBodyguard                LLM API
-──────────────────    ──────────────────────────    ──────────────
-.env                  1. Scan credential files
-secrets.yaml    ───►  2. Start TLS MITM proxy    ───►  api.anthropic.com
-values.yaml           3. Launch agent with             (secrets replaced
-                         HTTPS_PROXY injected           with ****)
-                      4. Intercept + redact all
-                         outbound requests
-```
-
-1. Scans your current directory for credential files (`.env`, YAML, JSON, `.properties`)
-2. Generates an ephemeral CA certificate and starts a local TLS MITM proxy
-3. Launches the agent with `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` injected automatically
-4. Every request body is scanned — matched secret values are replaced with `****`
 
 ---
 
