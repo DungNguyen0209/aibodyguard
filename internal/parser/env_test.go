@@ -43,18 +43,23 @@ JAVA_PROP=somevalue
 	if _, ok := got["EMPTY_VAL"]; ok {
 		t.Error("empty value should be excluded")
 	}
+	// commented lines must NOT appear in ParseEnvFile result
+	if _, ok := got["DB_PASSWORD_COMMENTED"]; ok {
+		t.Error("commented key should not appear in ParseEnvFile")
+	}
 }
 
-func TestParseEnvFile_CommentedOutCredentials(t *testing.T) {
+func TestParseCommentedEnvFile(t *testing.T) {
 	content := `
-# normal comment — no key=value, should be skipped
-APP_NAME=myapp
+APP_NAME=active-value
 #DB_PASSWORD=supersecret123
 # KAFKA_SSL_KEY=kafka-secret-key-abc
 #QUOTED="commented quoted value"
-## double-hash comment without key=value should be skipped
+## double-hash still valid
 # just a plain comment
 #spring.kafka.properties.security.protocol=SSL
+! not a comment marker for =
+!BANG_KEY=bang-value
 `
 	tmp := t.TempDir()
 	f := filepath.Join(tmp, ".env")
@@ -62,31 +67,32 @@ APP_NAME=myapp
 		t.Fatalf("failed to write temp file: %v", err)
 	}
 
-	got, err := ParseEnvFile(f)
+	got, err := ParseCommentedEnvFile(f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// commented-out key=value lines should still be parsed
-	if got["DB_PASSWORD"] != "supersecret123" {
-		t.Errorf("DB_PASSWORD: got %q, want %q", got["DB_PASSWORD"], "supersecret123")
+	cases := map[string]string{
+		"DB_PASSWORD":  "supersecret123",
+		"KAFKA_SSL_KEY": "kafka-secret-key-abc",
+		"QUOTED":       "commented quoted value",
+		"spring.kafka.properties.security.protocol": "SSL",
+		"BANG_KEY": "bang-value",
 	}
-	if got["KAFKA_SSL_KEY"] != "kafka-secret-key-abc" {
-		t.Errorf("KAFKA_SSL_KEY: got %q, want %q", got["KAFKA_SSL_KEY"], "kafka-secret-key-abc")
-	}
-	if got["QUOTED"] != "commented quoted value" {
-		t.Errorf("QUOTED: got %q, want %q", got["QUOTED"], "commented quoted value")
-	}
-	if got["spring.kafka.properties.security.protocol"] != "SSL" {
-		t.Errorf("spring.kafka.properties.security.protocol: got %q, want %q",
-			got["spring.kafka.properties.security.protocol"], "SSL")
+	for k, want := range cases {
+		if got[k] != want {
+			t.Errorf("key %q: got %q, want %q", k, got[k], want)
+		}
 	}
 
-	// plain comments with no key=value should not produce any key
+	// active line must NOT appear in ParseCommentedEnvFile result
+	if _, ok := got["APP_NAME"]; ok {
+		t.Error("active line should not appear in ParseCommentedEnvFile")
+	}
+	// plain prose comment should not produce a key
 	for k := range got {
-		if k == "normal comment — no key=value" || k == "just a plain comment" {
+		if k == "just a plain comment" {
 			t.Errorf("plain comment should not produce key %q", k)
 		}
 	}
 }
-

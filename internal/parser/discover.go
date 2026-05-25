@@ -110,6 +110,26 @@ var sourceCodeExts = map[string]bool{
 	".ico": true, ".webp": true, ".mp4": true, ".mp3": true, ".pdf": true,
 }
 
+// mergeInto adds values from src into dst, deduplicating per key.
+// Values that do not pass isLikelySecret are skipped.
+func mergeInto(dst map[string][]string, src map[string]string) {
+	for k, v := range src {
+		if !isLikelySecret(v) {
+			continue
+		}
+		already := false
+		for _, existing := range dst[k] {
+			if existing == v {
+				already = true
+				break
+			}
+		}
+		if !already {
+			dst[k] = append(dst[k], v)
+		}
+	}
+}
+
 // DiscoverSecrets walks root recursively, parses all credential files,
 // and returns a merged map of key -> secret value.
 // Values that are too short or look like non-secrets are filtered out.
@@ -144,31 +164,37 @@ func DiscoverSecrets(root string) (map[string][]string, error) {
 		}
 
 		var parsed map[string]string
+		var commented map[string]string
 		var parseErr error
 
 		base := strings.ToLower(filepath.Base(path))
 
 		switch ext {
 		case ".json":
-			// Only parse JSON files whose name suggests they hold config/secrets.
 			if isCredentialJSON(base) {
 				parsed, parseErr = ParseJSONFile(path)
+				// JSON does not have a line-comment syntax — no commented parser
 			}
 		case ".yaml", ".yml":
-			// Only parse YAML files whose name suggests they hold config/secrets.
 			if isCredentialYAML(base) {
 				parsed, parseErr = ParseYAMLFile(path)
+				if parseErr == nil {
+					commented, _ = ParseCommentedYAMLFile(path)
+				}
 			}
 		case ".properties":
 			if !isBinaryFile(path) {
 				parsed, parseErr = ParseEnvFile(path)
+				if parseErr == nil {
+					commented, _ = ParseCommentedEnvFile(path)
+				}
 			}
 		default:
-			// Only parse env-style files with known env file names (e.g. .env, .env.local).
-			// Do NOT fall back to looksLikeEnvFile() — too many false positives from
-			// Groovy scripts, XML, WSDL, Makefiles, etc. that contain "=" lines.
 			if isKnownEnvFile(base) && !isBinaryFile(path) {
 				parsed, parseErr = ParseEnvFile(path)
+				if parseErr == nil {
+					commented, _ = ParseCommentedEnvFile(path)
+				}
 			}
 		}
 
@@ -177,20 +203,8 @@ func DiscoverSecrets(root string) (map[string][]string, error) {
 			return nil
 		}
 
-		for k, v := range parsed {
-			if isLikelySecret(v) {
-				already := false
-				for _, existing := range all[k] {
-					if existing == v {
-						already = true
-						break
-					}
-				}
-				if !already {
-					all[k] = append(all[k], v)
-				}
-			}
-		}
+		mergeInto(all, parsed)
+		mergeInto(all, commented)
 		return nil
 	})
 

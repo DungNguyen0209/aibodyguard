@@ -13,6 +13,7 @@ database:
   host: localhost
 api_key: sk-yaml-key-abc123
 port: 5432
+# commented_key: should-not-appear
 `
 	tmp := t.TempDir()
 	f := filepath.Join(tmp, "secrets.yaml")
@@ -38,15 +39,20 @@ port: 5432
 	if _, ok := got["port"]; ok {
 		t.Error("numeric value should be excluded")
 	}
+	// commented lines must NOT appear in ParseYAMLFile result
+	if _, ok := got["commented_key"]; ok {
+		t.Error("commented key should not appear in ParseYAMLFile")
+	}
 }
 
-func TestParseYAMLFile_CommentedOutCredentials(t *testing.T) {
+func TestParseCommentedYAMLFile(t *testing.T) {
 	content := `
 database:
   password: active-secret-password
   # host: localhost
 #  api_key: sk-commented-key-abc123
 # spring.kafka.properties.ssl.keystore.password: kafka-keystore-secret99
+# just a plain prose comment
 `
 	tmp := t.TempDir()
 	f := filepath.Join(tmp, "secrets.yaml")
@@ -54,21 +60,30 @@ database:
 		t.Fatalf("failed to write temp file: %v", err)
 	}
 
-	got, err := ParseYAMLFile(f)
+	got, err := ParseCommentedYAMLFile(f)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// active line still works
-	if got["database.password"] != "active-secret-password" {
-		t.Errorf("database.password: got %q, want %q", got["database.password"], "active-secret-password")
+	cases := map[string]string{
+		"host":    "localhost",
+		"api_key": "sk-commented-key-abc123",
+		"spring.kafka.properties.ssl.keystore.password": "kafka-keystore-secret99",
 	}
-	// commented-out key: value lines should also be parsed
-	if got["api_key"] != "sk-commented-key-abc123" {
-		t.Errorf("api_key: got %q, want %q", got["api_key"], "sk-commented-key-abc123")
+	for k, want := range cases {
+		if got[k] != want {
+			t.Errorf("key %q: got %q, want %q", k, got[k], want)
+		}
 	}
-	if got["spring.kafka.properties.ssl.keystore.password"] != "kafka-keystore-secret99" {
-		t.Errorf("spring.kafka...: got %q, want %q",
-			got["spring.kafka.properties.ssl.keystore.password"], "kafka-keystore-secret99")
+
+	// active line must NOT appear in ParseCommentedYAMLFile result
+	if _, ok := got["database.password"]; ok {
+		t.Error("active line should not appear in ParseCommentedYAMLFile")
+	}
+	// plain prose should not produce a key
+	for k := range got {
+		if k == "just a plain prose comment" {
+			t.Errorf("plain comment should not produce key %q", k)
+		}
 	}
 }
