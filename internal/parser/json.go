@@ -2,7 +2,6 @@ package parser
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 )
 
@@ -19,31 +18,6 @@ func ParseJSONFile(path string) (map[string]string, error) {
 		return nil, err
 	}
 	result := make(map[string]string)
-	flattenJSON("", raw, result)
+	flatten("", raw, result, false)
 	return result, nil
-}
-
-func flattenJSON(prefix string, v interface{}, out map[string]string) {
-	switch val := v.(type) {
-	case map[string]interface{}:
-		for k, child := range val {
-			key := k
-			if prefix != "" {
-				key = prefix + "." + k
-			}
-			flattenJSON(key, child, out)
-		}
-	case []interface{}:
-		for i, child := range val {
-			key := fmt.Sprintf("%s.%d", prefix, i)
-			if prefix == "" {
-				key = fmt.Sprintf("%d", i)
-			}
-			flattenJSON(key, child, out)
-		}
-	case string:
-		if prefix != "" {
-			out[prefix] = val
-		}
-	}
 }

@@ -1,7 +1,6 @@
 package parser
 
 import (
-	"fmt"
 	"os"
 	"strings"
 
@@ -22,7 +21,7 @@ func ParseYAMLFile(path string) (map[string]string, error) {
 		return nil, err
 	}
 	result := make(map[string]string)
-	flattenYAML("", raw, result)
+	flatten("", raw, result, true)
 	return result, nil
 }
 
@@ -57,41 +56,7 @@ func ParseCommentedYAMLFile(path string) (map[string]string, error) {
 		if err := yaml.Unmarshal([]byte(candidate), &mini); err != nil {
 			continue // not valid YAML — skip silently
 		}
-		flattenYAML("", mini, result)
+		flatten("", mini, result, true)
 	}
 	return result, nil
-}
-
-func flattenYAML(prefix string, v interface{}, out map[string]string) {
-	switch val := v.(type) {
-	case map[string]interface{}:
-		for k, child := range val {
-			key := k
-			if prefix != "" {
-				key = prefix + "." + k
-			}
-			flattenYAML(key, child, out)
-		}
-	case map[interface{}]interface{}:
-		for k, child := range val {
-			ks, _ := k.(string)
-			key := ks
-			if prefix != "" {
-				key = prefix + "." + ks
-			}
-			flattenYAML(key, child, out)
-		}
-	case []interface{}:
-		for i, child := range val {
-			key := fmt.Sprintf("%s.%d", prefix, i)
-			if prefix == "" {
-				key = fmt.Sprintf("%d", i)
-			}
-			flattenYAML(key, child, out)
-		}
-	case string:
-		if prefix != "" {
-			out[prefix] = val
-		}
-	}
 }
