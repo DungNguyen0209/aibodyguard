@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
+    tags:
+      - 'v*'
 
 jobs:
   build:
@@ -29,12 +29,6 @@ jobs:
         with:
           go-version: '1.22'
 
-      - name: Read version
-        id: version
-        run: |
-          VERSION=$(grep 'Version = ' cmd/aibodyguard/version.go | sed 's/.*= "\(.*\)"/\1/')
-          echo "version=v${VERSION}" >> $GITHUB_OUTPUT
-
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
@@ -43,7 +37,7 @@ jobs:
           EXT=""
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
           go build \
-            -ldflags="-s -w -X main.Version=${{ steps.version.outputs.version }}" \
+            -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
             -o aibodyguard-${{ matrix.goos }}-${{ matrix.goarch }}${EXT} \
             ./cmd/aibodyguard/
 
@@ -59,16 +53,10 @@ jobs:
     permissions:
       contents: write
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ github.ref_name }}
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Read version
-        id: version
-        run: |
-          VERSION=$(grep 'Version = ' cmd/aibodyguard/version.go | sed 's/.*= "\(.*\)"/\1/')
-          echo "version=v${VERSION}" >> $GITHUB_OUTPUT
 
       - uses: actions/download-artifact@v4
         with:
@@ -80,7 +68,6 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.version }}
           files: |
             aibodyguard-*
             checksums.txt
