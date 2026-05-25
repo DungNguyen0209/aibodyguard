@@ -1,20 +1,93 @@
-# AIBodyguard
+<p align="center">
+  <img src="docs/assets/logo.svg" alt="AIBodyguard" width="120">
+</p>
 
-A credential leak prevention wrapper for AI coding agents.
+<h3 align="center">AIBodyguard</h3>
 
-AIBodyguard sits between your coding agent (OpenCode, Claude Code, etc.) and the LLM API. It automatically discovers credential files in your project, intercepts all outbound HTTPS requests, and redacts any secret values before they reach the AI — without any manual configuration.
+<p align="center">Credential leak prevention for AI coding agents.</p>
+
+<p align="center">
+  <a href="https://github.com/DungNguyen0209/aibodyguard/actions/workflows/ci.yml">
+    <img alt="CI" src="https://img.shields.io/github/actions/workflow/status/DungNguyen0209/aibodyguard/ci.yml?style=flat-square&label=ci" />
+  </a>
+  <a href="https://github.com/DungNguyen0209/aibodyguard/releases/latest">
+    <img alt="Release" src="https://img.shields.io/github/v/release/DungNguyen0209/aibodyguard?style=flat-square" />
+  </a>
+  <a href="LICENSE">
+    <img alt="License" src="https://img.shields.io/github/license/DungNguyen0209/aibodyguard?style=flat-square" />
+  </a>
+  <img alt="Go version" src="https://img.shields.io/badge/go-1.22+-00ADD8?style=flat-square" />
+</p>
+
+---
+
+<!-- Replace with a terminal screenshot or demo GIF showing the startup banner and a redaction event -->
+<!-- Recommended: use `vhs` (https://github.com/charmbracelet/vhs) to record a terminal demo -->
+<!-- Example: aibodyguard --test claude, then send a message containing a secret -->
+![AIBodyguard in action](docs/assets/demo.png)
+
+---
+
+AIBodyguard sits between your AI coding agent and the LLM API. It scans your project for credential files at startup, then intercepts every outbound HTTPS request and redacts any discovered secrets — API keys, database passwords, JDBC URLs — before they leave your machine.
+
+No agent configuration needed. Just prefix your command.
+
+```bash
+aibodyguard claude
+aibodyguard opencode
+```
+
+---
 
 ## How It Works
 
-1. At startup, AIBodyguard scans your current directory recursively for credential files (`.env`, JSON, YAML, `.properties`)
-2. It generates an ephemeral CA certificate and starts a local TLS MITM proxy
-3. The agent is launched with `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` injected — no changes to the agent's own config needed
-4. Every outbound HTTPS request is intercepted; secret values in the body are replaced with `****` before forwarding to the API
-5. In `--test` mode, full request details are also written to a JSON log file for inspection
+```
+Your project files          AIBodyguard                LLM API
+──────────────────    ──────────────────────────    ──────────────
+.env                  1. Scan credential files
+secrets.yaml    ───►  2. Start TLS MITM proxy    ───►  api.anthropic.com
+values.yaml           3. Launch agent with             (secrets replaced
+                         HTTPS_PROXY injected           with ****)
+                      4. Intercept + redact all
+                         outbound requests
+```
+
+1. Scans your current directory for credential files (`.env`, YAML, JSON, `.properties`)
+2. Generates an ephemeral CA certificate and starts a local TLS MITM proxy
+3. Launches the agent with `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` injected automatically
+4. Every request body is scanned — matched secret values are replaced with `****`
+
+---
 
 ## Installation
 
+### Download binary
+
+| Platform | Download |
+|---|---|
+| macOS (Apple Silicon) | `aibodyguard-darwin-arm64` |
+| macOS (Intel) | `aibodyguard-darwin-amd64` |
+| Linux (x86_64) | `aibodyguard-linux-amd64` |
+| Linux (ARM64) | `aibodyguard-linux-arm64` |
+| Windows | `aibodyguard-windows-amd64.exe` |
+
+Download from the [latest release](https://github.com/DungNguyen0209/aibodyguard/releases/latest), then:
+
+```bash
+# macOS / Linux
+chmod +x aibodyguard-darwin-arm64
+sudo mv aibodyguard-darwin-arm64 /usr/local/bin/aibodyguard
+```
+
+> [!TIP]
+> Verify your download with the `checksums.txt` file included in each release:
+> ```bash
+> sha256sum -c checksums.txt
+> ```
+
 ### Build from source
+
+Requires Go 1.22+.
 
 ```bash
 git clone https://github.com/DungNguyen0209/aibodyguard.git
@@ -23,7 +96,7 @@ go build -o aibodyguard ./cmd/aibodyguard/
 sudo mv aibodyguard /usr/local/bin/
 ```
 
-Requires Go 1.22+.
+---
 
 ## Usage
 
@@ -35,97 +108,62 @@ aibodyguard claude
 aibodyguard opencode
 
 # Wrap any other agent
-aibodyguard <agent-command> [agent-args...]
+aibodyguard <agent> [agent-args...]
 
-# Pass flags to the agent using -- separator
+# Pass flags to the agent using --
 aibodyguard -- claude --some-flag
+
+# Check version
+aibodyguard --version
 ```
 
-Run from your project root. AIBodyguard scans the current directory for credentials on every run.
+Run from your project root. AIBodyguard scans the current directory on every run.
 
 ### --test mode
 
-By default AIBodyguard only redacts — it does not write any request data to disk. Use `--test` to enable full request logging for inspection and debugging:
+By default AIBodyguard only redacts in-flight — nothing is written to disk. Use `--test` to enable full request logging for inspection and debugging:
 
 ```bash
 aibodyguard --test claude
 aibodyguard --test opencode
 ```
 
-When `--test` is active:
+> [!NOTE]
+> `--test` mode writes `body_original` (containing real secret values) to `/tmp/aibodyguard-requests.log`. Keep this file private and delete it when done.
 
-- Every intercepted request is appended as a JSON line to `/tmp/aibodyguard-requests.log`
-- The startup banner shows `Mode : TEST (request log active)`
-- The log file contains:
+When `--test` is active, every intercepted request is appended as a JSON line:
 
-| Field | Description |
-|---|---|
-| `timestamp` | UTC time the request was intercepted |
-| `method` | HTTP method (POST, GET, …) |
-| `url` | Full `https://` URL |
-| `headers` | All request headers (including `Authorization`) |
-| `body_original` | Raw request body before redaction |
-| `body_redacted` | Request body with secrets replaced by `****` |
-| `redacted_keys` | List of secret values that were matched and replaced |
+```jsonc
+{
+  "timestamp": "2026-05-25T10:32:01Z",
+  "method": "POST",
+  "url": "https://api.anthropic.com/v1/messages",
+  "headers": { "Authorization": "Bearer ****", "...": "..." },
+  "body_original": "...raw body including secrets...",
+  "body_redacted": "...body with **** placeholders...",
+  "redacted_keys": ["sk-ant-abc123...", "jdbc:mysql://host/db..."]
+}
+```
 
-> **Note:** `body_original` contains real secret values. Keep the log file private and delete it when done.
-
-To inspect the log:
+Inspect the log:
 
 ```bash
-# Pretty-print the latest request
+# Pretty-print latest request
 tail -1 /tmp/aibodyguard-requests.log | jq .
 
-# Show only redacted requests
+# Show only requests where secrets were redacted
 jq 'select(.redacted_keys | length > 0)' /tmp/aibodyguard-requests.log
 
 # Watch live
 tail -f /tmp/aibodyguard-requests.log | jq .
 ```
 
-## Supported Credential File Formats
-
-AIBodyguard parses files whose name matches known credential patterns:
-
-| Format | Matched when filename… | Examples |
-|---|---|---|
-| `.env` | is `.env`, `.env.*`, `.envrc` | `.env`, `.env.local`, `.env.production` |
-| `.properties` | any `.properties` file | `application.properties` |
-| JSON | contains `config`, `secret`, `credential`, `setting`, `value` | `appsettings.json`, `credentials.json` |
-| YAML | contains `config`, `secret`, `value`, `setting`, or known names | `secrets.yaml`, `values.yaml`, `appsettings-prod.yml` |
-
-Directories skipped: `node_modules`, `.git`, `vendor`, `build`, `dist`, and localization trees (`i18n`, `locales`, `translations`, …).
-
-## What Gets Redacted
-
-A value is treated as a secret if it:
-
-- Is 10+ characters long
-- Is not a common non-secret (`true`, `false`, `localhost`, plain URLs, cron expressions, etc.)
-- Has sufficient complexity: mixed case + digits, or special characters, or length ≥ 32
-
-`jdbc:` connection strings are treated as secrets regardless of the above rules.
-
-## Per-Tool Proxy Configuration
-
-AIBodyguard injects different env vars depending on which tool is being wrapped:
-
-| Env var | Claude Code | OpenCode | Other tools |
-|---|---|---|---|
-| `HTTPS_PROXY` / `https_proxy` | yes | yes | yes |
-| `NODE_EXTRA_CA_CERTS` | yes | yes | yes |
-| `SSL_CERT_FILE` | yes | yes | yes |
-| `REQUESTS_CA_BUNDLE` | yes | yes | yes |
-| `CLAUDE_CODE_CERT_STORE=system` | yes | — | — |
-| `NODE_TLS_REJECT_UNAUTHORIZED=1` | yes | yes | — |
-| `NO_PROXY=localhost,127.0.0.1` | — | yes | — |
-
-OpenCode requires `NO_PROXY` because its TUI communicates with a local HTTP server — routing that through the proxy would cause a connection loop.
+---
 
 ## Startup Banner
 
 ```
-  AIBodyguard  active
+  AIBodyguard v0.1.0  active
   ─────────────────────────────────────────
   Tool           : claude
   Secrets loaded : 315 values
@@ -137,10 +175,70 @@ OpenCode requires `NO_PROXY` because its TUI communicates with a local HTTP serv
   ─────────────────────────────────────────
 ```
 
+---
+
+## Per-Tool Configuration
+
+AIBodyguard automatically injects the correct env vars for each tool. No manual proxy configuration needed.
+
+| Environment variable | Claude Code | OpenCode | Other |
+|---|:---:|:---:|:---:|
+| `HTTPS_PROXY` / `https_proxy` | ✓ | ✓ | ✓ |
+| `NODE_EXTRA_CA_CERTS` | ✓ | ✓ | ✓ |
+| `SSL_CERT_FILE` | ✓ | ✓ | ✓ |
+| `REQUESTS_CA_BUNDLE` | ✓ | ✓ | ✓ |
+| `CLAUDE_CODE_CERT_STORE=system` | ✓ | — | — |
+| `NODE_TLS_REJECT_UNAUTHORIZED=1` | ✓ | ✓ | — |
+| `NO_PROXY=localhost,127.0.0.1` | — | ✓ | — |
+
+> [!NOTE]
+> OpenCode requires `NO_PROXY=localhost,127.0.0.1` because its TUI communicates with a local HTTP server. Without this, the proxy causes a routing loop and breaks the UI.
+
+---
+
+## Credential File Detection
+
+AIBodyguard walks your project directory and parses files whose names match known credential patterns. Source code, lock files, and localization trees are skipped automatically.
+
+| Format | Parsed when filename… |
+|---|---|
+| `.env` | is `.env`, `.env.*`, or `.envrc` |
+| `.properties` | any `.properties` file |
+| YAML / YML | contains `secret`, `credential`, `config`, `value`, or `setting` |
+| JSON | contains `secret`, `credential`, `config`, `value`, or `setting` |
+
+**Skipped directories:** `node_modules`, `.git`, `vendor`, `build`, `dist`, `i18n`, `locales`, `translations`, and similar.
+
+### What counts as a secret
+
+A value is treated as a secret if it passes all of these:
+
+- 10+ characters long
+- Not a common non-secret (`true`, `false`, `localhost`, plain HTTP/S URLs, cron expressions, path-only strings)
+- Has sufficient complexity — mixed case + digits, special characters, or length ≥ 32
+- `jdbc:` connection strings are always treated as secrets
+
+---
+
 ## Diagnostic Log
 
-All proxy activity (secrets discovered at startup, redaction events, errors) is written to `/tmp/aibodyguard.log`. This file is separate from the request log and is always written regardless of `--test` mode.
+All proxy activity is written to `/tmp/aibodyguard.log` — secrets discovered at startup (with real values for local debugging), redaction events, and any errors. This log is always written, independent of `--test` mode.
+
+---
+
+## Contributing
+
+Contributions are welcome. Please read [CONTRIBUTING.md](.github/CONTRIBUTING.md) before submitting a pull request.
+
+```bash
+git clone https://github.com/DungNguyen0209/aibodyguard.git
+cd aibodyguard
+go build ./...
+go test ./...
+```
+
+---
 
 ## License
 
-MIT
+MIT — see [LICENSE](LICENSE).
