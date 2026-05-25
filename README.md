@@ -52,6 +52,22 @@ chmod +x aibodyguard-darwin-arm64
 sudo mv aibodyguard-darwin-arm64 /usr/local/bin/aibodyguard
 ```
 
+> [!WARNING]
+> **macOS Gatekeeper:** Because the binary is not yet notarized with Apple, macOS may show
+> _"cannot verify that this app is free from malware"_. Run this once after installing to remove the quarantine flag:
+> ```bash
+> xattr -dr com.apple.quarantine /usr/local/bin/aibodyguard
+> ```
+> Alternatively, install via Homebrew (see below) — no quarantine warning.
+
+### Install via Homebrew (recommended for macOS)
+
+```bash
+brew install DungNguyen0209/tap/aibodyguard
+```
+
+No quarantine warning, auto-updates with `brew upgrade`.
+
 > [!TIP]
 > Verify your download with the `checksums.txt` file included in each release:
 > ```bash
