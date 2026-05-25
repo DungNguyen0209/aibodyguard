@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/yourusername/aibodyguard/internal/agentconfig"
 	"github.com/yourusername/aibodyguard/internal/mitm"
 	"github.com/yourusername/aibodyguard/internal/parser"
 	"github.com/yourusername/aibodyguard/internal/scanner"
@@ -117,6 +118,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "\n")
 	fmt.Fprintf(os.Stderr, "  AIBodyguard  active\n")
 	fmt.Fprintf(os.Stderr, "  ─────────────────────────────────────────\n")
+	fmt.Fprintf(os.Stderr, "  Tool           : %s\n", filepath.Base(agentArgs[0]))
 	fmt.Fprintf(os.Stderr, "  Secrets loaded : %d values\n", len(secrets))
 	fmt.Fprintf(os.Stderr, "  MITM proxy     : %s\n", proxyAddr)
 	fmt.Fprintf(os.Stderr, "  CA cert        : %s\n", caPath)
@@ -126,18 +128,22 @@ func main() {
 	fmt.Fprintf(os.Stderr, "\n")
 
 	// Spawn the agent with proxy + CA cert injected into env only
+	toolName := filepath.Base(agentArgs[0])
+	var toolEnv []string
+	switch toolName {
+	case "claude":
+		toolEnv = agentconfig.ClaudeEnv(proxyAddr, caPath)
+	case "opencode":
+		toolEnv = agentconfig.OpenCodeEnv(proxyAddr, caPath)
+	default:
+		toolEnv = agentconfig.CommonEnv(proxyAddr, caPath)
+	}
+
 	cmd := exec.Command(agentArgs[0], agentArgs[1:]...)
 	cmd.Stdin = os.Stdin
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
-	cmd.Env = append(os.Environ(),
-		"HTTPS_PROXY="+proxyAddr,
-		"https_proxy="+proxyAddr,
-		"NODE_EXTRA_CA_CERTS="+caPath,
-		"NODE_TLS_REJECT_UNAUTHORIZED=1",
-		"SSL_CERT_FILE="+caPath,
-		"REQUESTS_CA_BUNDLE="+caPath, // Python (aider, etc.)
-	)
+	cmd.Env = append(os.Environ(), toolEnv...)
 
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintf(os.Stderr, "aibodyguard: error starting agent: %v\n", err)
