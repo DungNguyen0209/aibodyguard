@@ -2,8 +2,8 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
 
 jobs:
   build:
@@ -29,6 +29,12 @@ jobs:
         with:
           go-version: '1.22'
 
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(grep 'Version = ' cmd/aibodyguard/version.go | sed 's/.*= "\(.*\)"/\1/')
+          echo "version=v${VERSION}" >> $GITHUB_OUTPUT
+
       - name: Build
         env:
           GOOS: ${{ matrix.goos }}
@@ -37,7 +43,7 @@ jobs:
           EXT=""
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
           go build \
-            -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
+            -ldflags="-s -w -X main.Version=${{ steps.version.outputs.version }}" \
             -o aibodyguard-${{ matrix.goos }}-${{ matrix.goarch }}${EXT} \
             ./cmd/aibodyguard/
 
@@ -52,8 +58,18 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
 
     steps:
+      - uses: actions/checkout@v4
+
+      - name: Read version
+        id: version
+        run: |
+          VERSION=$(grep 'Version = ' cmd/aibodyguard/version.go | sed 's/.*= "\(.*\)"/\1/')
+          echo "version=v${VERSION}" >> $GITHUB_OUTPUT
+
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
@@ -64,7 +80,62 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.version.outputs.version }}
           files: |
             aibodyguard-*
             checksums.txt
           generate_release_notes: true
+
+  update-tap:
+    needs: release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download checksums
+        run: |
+          curl -sL "https://github.com/DungNguyen0209/aibodyguard/releases/download/${{ needs.release.outputs.version }}/checksums.txt" \
+            -o checksums.txt
+          cat checksums.txt
+
+      - name: Extract SHA256s
+        id: sha
+        run: |
+          echo "darwin_arm64=$(grep 'darwin-arm64$' checksums.txt | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "darwin_amd64=$(grep 'darwin-amd64$' checksums.txt | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "linux_arm64=$(grep 'linux-arm64$' checksums.txt | awk '{print $1}')" >> $GITHUB_OUTPUT
+          echo "linux_amd64=$(grep 'linux-amd64$' checksums.txt | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      - name: Checkout tap repo
+        uses: actions/checkout@v4
+        with:
+          repository: DungNguyen0209/homebrew-tap
+          token: ${{ secrets.TAP_GITHUB_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        env:
+          VERSION: ${{ needs.release.outputs.version }}
+          DARWIN_ARM64: ${{ steps.sha.outputs.darwin_arm64 }}
+          DARWIN_AMD64: ${{ steps.sha.outputs.darwin_amd64 }}
+          LINUX_ARM64: ${{ steps.sha.outputs.linux_arm64 }}
+          LINUX_AMD64: ${{ steps.sha.outputs.linux_amd64 }}
+        run: |
+          VERSION_NUM="${VERSION#v}"
+          sed -i "s|version \".*\"|version \"${VERSION_NUM}\"|" homebrew-tap/Formula/aibodyguard.rb
+          sed -i "/darwin-arm64/{n;s|sha256 \".*\"|sha256 \"${DARWIN_ARM64}\"|}"\
+            homebrew-tap/Formula/aibodyguard.rb
+          sed -i "/darwin-amd64/{n;s|sha256 \".*\"|sha256 \"${DARWIN_AMD64}\"|}"\
+            homebrew-tap/Formula/aibodyguard.rb
+          sed -i "/linux-arm64/{n;s|sha256 \".*\"|sha256 \"${LINUX_ARM64}\"|}"\
+            homebrew-tap/Formula/aibodyguard.rb
+          sed -i "/linux-amd64/{n;s|sha256 \".*\"|sha256 \"${LINUX_AMD64}\"|}"\
+            homebrew-tap/Formula/aibodyguard.rb
+
+      - name: Commit and push
+        working-directory: homebrew-tap
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add Formula/aibodyguard.rb
+          git commit -m "aibodyguard ${{ needs.release.outputs.version }}"
+          git push
