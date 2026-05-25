@@ -151,3 +151,50 @@ jobs:
           git add Formula/aibodyguard.rb
           git commit -m "aibodyguard ${{ needs.version.outputs.version }}"
           git push
+
+  update-scoop:
+    needs: [version, release]
+    runs-on: ubuntu-latest
+    # Only update the Scoop bucket for stable releases
+    if: needs.version.outputs.is_beta == 'false'
+
+    steps:
+      - name: Download checksums
+        run: |
+          curl -sL "https://github.com/DungNguyen0209/aibodyguard/releases/download/${{ needs.version.outputs.version }}/checksums.txt" \
+            -o checksums.txt
+
+      - name: Extract windows SHA256
+        id: sha
+        run: |
+          echo "windows_amd64=$(grep 'windows-amd64.exe$' checksums.txt | awk '{print $1}')" >> $GITHUB_OUTPUT
+
+      - name: Checkout scoop bucket
+        uses: actions/checkout@v4
+        with:
+          repository: DungNguyen0209/scoop-bucket
+          token: ${{ secrets.SCOOP_GITHUB_TOKEN }}
+          path: scoop-bucket
+
+      - name: Update manifest
+        env:
+          VERSION: ${{ needs.version.outputs.version }}
+          WINDOWS_AMD64: ${{ steps.sha.outputs.windows_amd64 }}
+        run: |
+          VERSION_NUM="${VERSION#v}"
+          jq \
+            --arg ver "$VERSION_NUM" \
+            --arg url "https://github.com/DungNguyen0209/aibodyguard/releases/download/${VERSION}/aibodyguard-windows-amd64.exe" \
+            --arg hash "$WINDOWS_AMD64" \
+            '.version = $ver | .architecture["64bit"].url = $url | .architecture["64bit"].hash = $hash' \
+            scoop-bucket/bucket/aibodyguard.json > tmp.json
+          mv tmp.json scoop-bucket/bucket/aibodyguard.json
+
+      - name: Commit and push
+        working-directory: scoop-bucket
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add bucket/aibodyguard.json
+          git commit -m "aibodyguard ${{ needs.version.outputs.version }}"
+          git push
