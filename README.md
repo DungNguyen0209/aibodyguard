@@ -34,25 +34,60 @@ aibodyguard opencode
 
 ## Installation
 
+### macOS
+
 ```bash
 brew install DungNguyen0209/tap/aibodyguard
 ```
+
+### Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/DungNguyen0209/aibodyguard/main/install.sh | sh
+```
+
+To install to a custom directory:
+
+```bash
+INSTALL_DIR=~/.local/bin curl -fsSL https://raw.githubusercontent.com/DungNguyen0209/aibodyguard/main/install.sh | sh
+```
+
+### Windows (Scoop)
+
+```powershell
+scoop bucket add dung https://github.com/DungNguyen0209/scoop-bucket
+scoop install aibodyguard
+```
+
+Auto-updates with `scoop update aibodyguard`.
 
 ---
 
 ## Uninstall
 
+### macOS (Homebrew)
+
 ```bash
 brew uninstall aibodyguard
-brew untap DungNguyen0209/tap  # optional — removes the tap entirely
+brew untap DungNguyen0209/tap  # optional
+```
+
+### Linux (curl install)
+
+```bash
+sudo rm /usr/local/bin/aibodyguard
+```
+
+### Windows (Scoop)
+
+```powershell
+scoop uninstall aibodyguard
 ```
 
 ### Clean up logs
 
 ```bash
-rm -f /tmp/aibodyguard.log
-rm -f /tmp/aibodyguard-requests.log
-rm -f /tmp/aibodyguard-ca.pem
+rm -f /tmp/aibodyguard.log /tmp/aibodyguard-requests.log /tmp/aibodyguard-ca.pem
 ```
 
 ---
