@@ -34,77 +34,17 @@ aibodyguard opencode
 
 ## Installation
 
-### Download binary
-
-| Platform | Download |
-|---|---|
-| macOS (Apple Silicon) | `aibodyguard-darwin-arm64` |
-| macOS (Intel) | `aibodyguard-darwin-amd64` |
-| Linux (x86_64) | `aibodyguard-linux-amd64` |
-| Linux (ARM64) | `aibodyguard-linux-arm64` |
-| Windows | `aibodyguard-windows-amd64.exe` |
-
-Download from the [latest release](https://github.com/DungNguyen0209/aibodyguard/releases/latest), then:
-
-```bash
-# macOS Apple Silicon
-curl -L https://github.com/DungNguyen0209/aibodyguard/releases/latest/download/aibodyguard-darwin-arm64 \
-  -o /usr/local/bin/aibodyguard
-chmod +x /usr/local/bin/aibodyguard
-
-# macOS Intel
-curl -L https://github.com/DungNguyen0209/aibodyguard/releases/latest/download/aibodyguard-darwin-amd64 \
-  -o /usr/local/bin/aibodyguard
-chmod +x /usr/local/bin/aibodyguard
-
-# Linux x86_64
-curl -L https://github.com/DungNguyen0209/aibodyguard/releases/latest/download/aibodyguard-linux-amd64 \
-  -o /usr/local/bin/aibodyguard
-chmod +x /usr/local/bin/aibodyguard
-
-# Linux ARM64
-curl -L https://github.com/DungNguyen0209/aibodyguard/releases/latest/download/aibodyguard-linux-arm64 \
-  -o /usr/local/bin/aibodyguard
-chmod +x /usr/local/bin/aibodyguard
-```
-
-> [!WARNING]
-> **macOS Gatekeeper:** Because the binary is not yet notarized with Apple, macOS may show
-> _"cannot verify that this app is free from malware"_. Run this once after installing to remove the quarantine flag:
-> ```bash
-> xattr -dr com.apple.quarantine /usr/local/bin/aibodyguard
-> ```
-> Alternatively, install via Homebrew (see below) — no quarantine warning.
-
-### Install via Homebrew (recommended for macOS)
-
 ```bash
 brew install DungNguyen0209/tap/aibodyguard
 ```
-
-No quarantine warning, auto-updates with `brew upgrade`.
-
-> [!TIP]
-> Verify your download with the `checksums.txt` file included in each release:
-> ```bash
-> sha256sum -c checksums.txt
-> ```
 
 ---
 
 ## Uninstall
 
-### Homebrew
-
 ```bash
 brew uninstall aibodyguard
 brew untap DungNguyen0209/tap  # optional — removes the tap entirely
-```
-
-### Release binary (curl install) or build from source
-
-```bash
-sudo rm /usr/local/bin/aibodyguard
 ```
 
 ### Clean up logs
