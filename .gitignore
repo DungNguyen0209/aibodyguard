@@ -1,6 +1,6 @@
-# Built binary
-aibodyguard
-aibodyguard.exe
+# Built binary (root only, not the cmd/aibodyguard/ source directory)
+/aibodyguard
+/aibodyguard.exe
 
 # Go build cache
 *.test

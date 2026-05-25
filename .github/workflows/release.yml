@@ -24,6 +24,7 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-go@v5
         with:
           go-version: '1.22'
@@ -35,7 +36,10 @@ jobs:
         run: |
           EXT=""
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
-          go build -ldflags="-s -w" -o aibodyguard-${{ matrix.goos }}-${{ matrix.goarch }}${EXT} ./cmd/aibodyguard/
+          go build \
+            -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
+            -o aibodyguard-${{ matrix.goos }}-${{ matrix.goarch }}${EXT} \
+            ./cmd/aibodyguard/
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -48,12 +52,19 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+
     steps:
       - uses: actions/download-artifact@v4
         with:
           merge-multiple: true
 
+      - name: Generate checksums
+        run: sha256sum aibodyguard-* > checksums.txt
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
-          files: aibodyguard-*
+          files: |
+            aibodyguard-*
+            checksums.txt
+          generate_release_notes: true

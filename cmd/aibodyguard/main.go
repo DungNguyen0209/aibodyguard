@@ -23,6 +23,10 @@ func main() {
 		printUsage()
 		os.Exit(0)
 	}
+	if args[0] == "--version" || args[0] == "-v" {
+		fmt.Fprintf(os.Stdout, "aibodyguard %s\n", Version)
+		os.Exit(0)
+	}
 
 	// Find the -- separator and parse aibodyguard-own flags (before --)
 	sepIdx := -1
@@ -130,7 +134,7 @@ func main() {
 
 	// ── Startup banner ──
 	fmt.Fprintf(os.Stderr, "\n")
-	fmt.Fprintf(os.Stderr, "  AIBodyguard  active\n")
+	fmt.Fprintf(os.Stderr, "  AIBodyguard %s  active\n", Version)
 	fmt.Fprintf(os.Stderr, "  ─────────────────────────────────────────\n")
 	fmt.Fprintf(os.Stderr, "  Tool           : %s\n", filepath.Base(agentArgs[0]))
 	fmt.Fprintf(os.Stderr, "  Secrets loaded : %d values\n", len(secrets))
