@@ -47,9 +47,25 @@ aibodyguard opencode
 Download from the [latest release](https://github.com/DungNguyen0209/aibodyguard/releases/latest), then:
 
 ```bash
-# macOS / Linux
-chmod +x aibodyguard-darwin-arm64
-sudo mv aibodyguard-darwin-arm64 /usr/local/bin/aibodyguard
+# macOS Apple Silicon
+curl -L https://github.com/DungNguyen0209/aibodyguard/releases/latest/download/aibodyguard-darwin-arm64 \
+  -o /usr/local/bin/aibodyguard
+chmod +x /usr/local/bin/aibodyguard
+
+# macOS Intel
+curl -L https://github.com/DungNguyen0209/aibodyguard/releases/latest/download/aibodyguard-darwin-amd64 \
+  -o /usr/local/bin/aibodyguard
+chmod +x /usr/local/bin/aibodyguard
+
+# Linux x86_64
+curl -L https://github.com/DungNguyen0209/aibodyguard/releases/latest/download/aibodyguard-linux-amd64 \
+  -o /usr/local/bin/aibodyguard
+chmod +x /usr/local/bin/aibodyguard
+
+# Linux ARM64
+curl -L https://github.com/DungNguyen0209/aibodyguard/releases/latest/download/aibodyguard-linux-arm64 \
+  -o /usr/local/bin/aibodyguard
+chmod +x /usr/local/bin/aibodyguard
 ```
 
 > [!WARNING]
@@ -85,7 +101,7 @@ brew uninstall aibodyguard
 brew untap DungNguyen0209/tap  # optional — removes the tap entirely
 ```
 
-### Manual binary
+### Release binary (curl install) or build from source
 
 ```bash
 sudo rm /usr/local/bin/aibodyguard
