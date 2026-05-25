@@ -24,12 +24,26 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Find the -- separator
+	// Find the -- separator and parse aibodyguard-own flags (before --)
 	sepIdx := -1
+	testMode := false
+	ownArgs := args
 	for i, a := range args {
 		if a == "--" {
 			sepIdx = i
+			ownArgs = args[:i]
 			break
+		}
+	}
+
+	// Strip --test from own args; remaining own args become the agent command
+	// when no -- separator is present.
+	var filteredOwn []string
+	for _, a := range ownArgs {
+		if a == "--test" {
+			testMode = true
+		} else {
+			filteredOwn = append(filteredOwn, a)
 		}
 	}
 
@@ -37,7 +51,7 @@ func main() {
 	if sepIdx >= 0 {
 		agentArgs = args[sepIdx+1:]
 	} else {
-		agentArgs = args
+		agentArgs = filteredOwn
 	}
 
 	if len(agentArgs) == 0 {
@@ -97,7 +111,7 @@ func main() {
 
 	// Start TLS MITM proxy
 	s := scanner.New(secrets)
-	p, err := mitm.New(s, logWriter, nil)
+	p, err := mitm.New(s, logWriter, &mitm.Config{EnableRequestLog: testMode})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "aibodyguard: error starting proxy: %v\n", err)
 		os.Exit(1)
@@ -120,10 +134,15 @@ func main() {
 	fmt.Fprintf(os.Stderr, "  ─────────────────────────────────────────\n")
 	fmt.Fprintf(os.Stderr, "  Tool           : %s\n", filepath.Base(agentArgs[0]))
 	fmt.Fprintf(os.Stderr, "  Secrets loaded : %d values\n", len(secrets))
+	if testMode {
+		fmt.Fprintf(os.Stderr, "  Mode           : TEST (request log active)\n")
+		fmt.Fprintf(os.Stderr, "  Request log    : /tmp/aibodyguard-requests.log\n")
+	} else {
+		fmt.Fprintf(os.Stderr, "  Mode           : normal\n")
+	}
 	fmt.Fprintf(os.Stderr, "  MITM proxy     : %s\n", proxyAddr)
 	fmt.Fprintf(os.Stderr, "  CA cert        : %s\n", caPath)
 	fmt.Fprintf(os.Stderr, "  Log            : %s\n", logPath)
-	fmt.Fprintf(os.Stderr, "  Request log    : /tmp/aibodyguard-requests.log\n")
 	fmt.Fprintf(os.Stderr, "  ─────────────────────────────────────────\n")
 	fmt.Fprintf(os.Stderr, "\n")
 

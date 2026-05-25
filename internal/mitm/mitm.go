@@ -20,7 +20,12 @@ type MITM interface {
 
 // Config holds options for creating a MITM proxy.
 type Config struct {
+	// EnableRequestLog controls whether intercepted requests are written to a
+	// JSON log file. Disabled by default; enabled with the --test flag.
+	EnableRequestLog bool
+
 	// RequestLogPath is the file path for the JSON request log.
+	// Only used when EnableRequestLog is true.
 	// Defaults to /tmp/aibodyguard-requests.log if empty.
 	RequestLogPath string
 }
@@ -31,17 +36,21 @@ func New(s Redactor, log io.Writer, cfg *Config) (MITM, error) {
 	if cfg == nil {
 		cfg = &Config{}
 	}
-	path := cfg.RequestLogPath
-	if path == "" {
-		path = "/tmp/aibodyguard-requests.log"
-	}
 
-	reqLogger, err := logger.New(path)
-	if err != nil {
-		fmt.Fprintf(log, "[aibodyguard] WARNING: could not open request log %s: %v\n", path, err)
-		reqLogger = nil
-	} else {
-		fmt.Fprintf(log, "[aibodyguard] request log: %s\n", path)
+	var reqLogger *logger.RequestLogger
+	if cfg.EnableRequestLog {
+		path := cfg.RequestLogPath
+		if path == "" {
+			path = "/tmp/aibodyguard-requests.log"
+		}
+		var err error
+		reqLogger, err = logger.New(path)
+		if err != nil {
+			fmt.Fprintf(log, "[aibodyguard] WARNING: could not open request log %s: %v\n", path, err)
+			reqLogger = nil
+		} else {
+			fmt.Fprintf(log, "[aibodyguard] request log: %s\n", path)
+		}
 	}
 
 	return newMITMProxyWithUpstreamTLSAndLogger(s, log, nil, reqLogger)
