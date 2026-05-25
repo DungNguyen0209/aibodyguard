@@ -2,11 +2,34 @@ name: Release
 
 on:
   push:
-    tags:
-      - 'v*'
+    branches:
+      - main
+      - 'beta/*'
 
 jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      is_beta: ${{ steps.version.outputs.is_beta }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          BASE=$(grep 'Version = ' cmd/aibodyguard/version.go | sed 's/.*= "\(.*\)"/\1/')
+          if [[ "${{ github.ref_name }}" == beta/* ]]; then
+            echo "version=v${BASE}-beta.${{ github.run_number }}" >> $GITHUB_OUTPUT
+            echo "is_beta=true" >> $GITHUB_OUTPUT
+          else
+            echo "version=v${BASE}" >> $GITHUB_OUTPUT
+            echo "is_beta=false" >> $GITHUB_OUTPUT
+          fi
+
   build:
+    needs: version
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -37,7 +60,7 @@ jobs:
           EXT=""
           if [ "$GOOS" = "windows" ]; then EXT=".exe"; fi
           go build \
-            -ldflags="-s -w -X main.Version=${{ github.ref_name }}" \
+            -ldflags="-s -w -X main.Version=${{ needs.version.outputs.version }}" \
             -o aibodyguard-${{ matrix.goos }}-${{ matrix.goarch }}${EXT} \
             ./cmd/aibodyguard/
 
@@ -48,12 +71,10 @@ jobs:
           path: aibodyguard-*
 
   release:
-    needs: build
+    needs: [version, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    outputs:
-      version: ${{ github.ref_name }}
 
     steps:
       - uses: actions/checkout@v4
@@ -68,19 +89,23 @@ jobs:
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.version.outputs.version }}
+          prerelease: ${{ needs.version.outputs.is_beta }}
           files: |
             aibodyguard-*
             checksums.txt
           generate_release_notes: true
 
   update-tap:
-    needs: release
+    needs: [version, release]
     runs-on: ubuntu-latest
+    # Only update the Homebrew tap for stable releases
+    if: needs.version.outputs.is_beta == 'false'
 
     steps:
       - name: Download checksums
         run: |
-          curl -sL "https://github.com/DungNguyen0209/aibodyguard/releases/download/${{ needs.release.outputs.version }}/checksums.txt" \
+          curl -sL "https://github.com/DungNguyen0209/aibodyguard/releases/download/${{ needs.version.outputs.version }}/checksums.txt" \
             -o checksums.txt
           cat checksums.txt
 
@@ -101,7 +126,7 @@ jobs:
 
       - name: Update formula
         env:
-          VERSION: ${{ needs.release.outputs.version }}
+          VERSION: ${{ needs.version.outputs.version }}
           DARWIN_ARM64: ${{ steps.sha.outputs.darwin_arm64 }}
           DARWIN_AMD64: ${{ steps.sha.outputs.darwin_amd64 }}
           LINUX_ARM64: ${{ steps.sha.outputs.linux_arm64 }}
@@ -124,5 +149,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add Formula/aibodyguard.rb
-          git commit -m "aibodyguard ${{ needs.release.outputs.version }}"
+          git commit -m "aibodyguard ${{ needs.version.outputs.version }}"
           git push
