@@ -96,11 +96,14 @@ func main() {
 	if cacheErr := modelcache.EnsureReady(cacheDir); cacheErr != nil {
 		fmt.Fprintf(os.Stderr, "  warning: ML model not available, using heuristic detection only\n")
 	} else {
+		fmt.Fprintf(os.Stderr, "  Loading ML model...")
 		var detErr error
 		det, detErr = detector.New(cacheDir)
 		if detErr != nil {
-			fmt.Fprintf(os.Stderr, "  warning: ML model failed to load (%v), using heuristic detection only\n", detErr)
+			fmt.Fprintf(os.Stderr, " failed (%v), using heuristic detection only\n", detErr)
 			det = nil
+		} else {
+			fmt.Fprintf(os.Stderr, " done\n")
 		}
 	}
 	defer func() {
@@ -109,10 +112,18 @@ func main() {
 		}
 	}()
 
+	fmt.Fprintf(os.Stderr, "  Scanning for secrets...")
 	secrets, err := parser.New().Discover(cwd, det)
 	if err != nil {
 		fmt.Fprintf(logWriter, "[aibodyguard] warning: partial scan error: %v\n", err)
 	}
+	fmt.Fprintf(os.Stderr, " done (%d values found)\n", func() int {
+		n := 0
+		for _, v := range secrets {
+			n += len(v)
+		}
+		return n
+	}())
 
 	// Log all discovered secrets (keys + real values) for debugging
 	if len(secrets) == 0 {
