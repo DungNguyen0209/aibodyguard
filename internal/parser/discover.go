@@ -46,7 +46,7 @@ var skipPathSegments = []string{
 	"l10n",
 	"translations",
 	"translation",
-	"messages",  // Spring MessageSource bundles (messages_en.properties, etc.)
+	"messages", // Spring MessageSource bundles (messages_en.properties, etc.)
 	"intl",
 }
 
@@ -255,17 +255,17 @@ var credentialJSONNames = map[string]bool{
 	// App-specific
 	"appsettings.json": true, "appsettings.development.json": true,
 	"appsettings.production.json": true, "appsettings.staging.json": true,
-	"appsettings.test.json": true,
-	"settings.json": true,
-	"local.settings.json": true,   // Azure Functions
-	"firebase.json": true,
+	"appsettings.test.json":  true,
+	"settings.json":          true,
+	"local.settings.json":    true, // Azure Functions
+	"firebase.json":          true,
 	"firebase-adminsdk.json": true,
-	".firebaserc": true,
-	"auth.json": true,
-	"vault.json": true,
+	".firebaserc":            true,
+	"auth.json":              true,
+	"vault.json":             true,
 	// Terraform / infra
 	"terraform.tfvars.json": true,
-	"variables.json": true,
+	"variables.json":        true,
 	// npm / node (has tokens in some setups)
 	".npmrc": true,
 }
@@ -421,7 +421,7 @@ func isLikelySecret(v string) bool {
 	}
 
 	// Minimum length for a meaningful secret
-	if len(v) < 10 {
+	if len(v) < 6 {
 		return false
 	}
 
