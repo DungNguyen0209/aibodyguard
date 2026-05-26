@@ -5,4 +5,4 @@ package main
 //	go build -ldflags="-X main.Version=v1.2.3"
 //
 // Falls back to "dev" when built without ldflags (local development).
-var Version = "0.5.1"
+var Version = "0.5.2"
