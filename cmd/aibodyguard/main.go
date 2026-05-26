@@ -12,7 +12,9 @@ import (
 	"time"
 
 	"github.com/DungNguyen0209/aibodyguard/internal/agentconfig"
+	"github.com/DungNguyen0209/aibodyguard/internal/detector"
 	"github.com/DungNguyen0209/aibodyguard/internal/mitm"
+	"github.com/DungNguyen0209/aibodyguard/internal/modelcache"
 	"github.com/DungNguyen0209/aibodyguard/internal/parser"
 	"github.com/DungNguyen0209/aibodyguard/internal/scanner"
 )
@@ -81,7 +83,27 @@ func main() {
 	}
 
 	fmt.Fprintf(logWriter, "[aibodyguard] scanning for credential files in %s...\n", cwd)
-	secrets, err := parser.New().Discover(cwd)
+
+	// Init ML model cache and detector (downloads on first run if needed)
+	cacheDir := modelcache.DefaultCacheDir()
+	var det *detector.Detector
+	if cacheErr := modelcache.EnsureReady(cacheDir); cacheErr != nil {
+		fmt.Fprintf(os.Stderr, "  warning: ML model not available, using heuristic detection only\n")
+	} else {
+		var detErr error
+		det, detErr = detector.New(cacheDir)
+		if detErr != nil {
+			fmt.Fprintf(os.Stderr, "  warning: ML model failed to load (%v), using heuristic detection only\n", detErr)
+			det = nil
+		}
+	}
+	defer func() {
+		if det != nil {
+			det.Close()
+		}
+	}()
+
+	secrets, err := parser.New().Discover(cwd, det)
 	if err != nil {
 		fmt.Fprintf(logWriter, "[aibodyguard] warning: partial scan error: %v\n", err)
 	}
