@@ -217,7 +217,7 @@ func DiscoverSecrets(root string, det *detector.Detector) (map[string][]string, 
 				mlSecrets, mlErr := det.DetectFromContent(string(raw))
 				if mlErr == nil {
 					for _, s := range mlSecrets {
-						if s == "" {
+						if s == "" || !isLikelySecret(s) {
 							continue
 						}
 						already := false

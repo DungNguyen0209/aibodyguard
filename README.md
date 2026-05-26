@@ -146,9 +146,12 @@ Run from your project root. AIBodyguard scans the current directory on every run
 By default AIBodyguard only redacts in-flight — nothing is written to disk. Use `--test` to enable full request logging for inspection and debugging:
 
 ```bash
-aibodyguard --test claude
-aibodyguard --test opencode
+aibodyguard --test -- claude
+aibodyguard --test -- opencode
 ```
+
+> [!NOTE]
+> `--test` flag must come **before** `--`. Flags after `--` are passed to the agent, not to AIBodyguard.
 
 > [!NOTE]
 > `--test` mode writes `body_original` (containing real secret values) to a per-session log file shown in the startup banner. Keep this file private and delete it when done.
