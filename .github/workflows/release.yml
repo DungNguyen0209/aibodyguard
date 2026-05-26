@@ -30,20 +30,22 @@ jobs:
 
   build:
     needs: version
-    runs-on: ubuntu-latest
     strategy:
       matrix:
         include:
           - goos: darwin
             goarch: arm64
-          - goos: darwin
-            goarch: amd64
+            runner: macos-latest
           - goos: linux
             goarch: amd64
+            runner: ubuntu-latest
           - goos: linux
             goarch: arm64
+            runner: ubuntu-24.04-arm
           - goos: windows
             goarch: amd64
+            runner: windows-latest
+    runs-on: ${{ matrix.runner }}
 
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +65,7 @@ jobs:
             -ldflags="-s -w -X main.Version=${{ needs.version.outputs.version }}" \
             -o aibodyguard-${{ matrix.goos }}-${{ matrix.goarch }}${EXT} \
             ./cmd/aibodyguard/
+        shell: bash
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -113,7 +116,6 @@ jobs:
         id: sha
         run: |
           echo "darwin_arm64=$(grep 'darwin-arm64$' checksums.txt | awk '{print $1}')" >> $GITHUB_OUTPUT
-          echo "darwin_amd64=$(grep 'darwin-amd64$' checksums.txt | awk '{print $1}')" >> $GITHUB_OUTPUT
           echo "linux_arm64=$(grep 'linux-arm64$' checksums.txt | awk '{print $1}')" >> $GITHUB_OUTPUT
           echo "linux_amd64=$(grep 'linux-amd64$' checksums.txt | awk '{print $1}')" >> $GITHUB_OUTPUT
 
@@ -128,15 +130,12 @@ jobs:
         env:
           VERSION: ${{ needs.version.outputs.version }}
           DARWIN_ARM64: ${{ steps.sha.outputs.darwin_arm64 }}
-          DARWIN_AMD64: ${{ steps.sha.outputs.darwin_amd64 }}
           LINUX_ARM64: ${{ steps.sha.outputs.linux_arm64 }}
           LINUX_AMD64: ${{ steps.sha.outputs.linux_amd64 }}
         run: |
           VERSION_NUM="${VERSION#v}"
           sed -i "s|version \".*\"|version \"${VERSION_NUM}\"|" homebrew-tap/Formula/aibodyguard.rb
           sed -i "/darwin-arm64/{n;s|sha256 \".*\"|sha256 \"${DARWIN_ARM64}\"|}"\
-            homebrew-tap/Formula/aibodyguard.rb
-          sed -i "/darwin-amd64/{n;s|sha256 \".*\"|sha256 \"${DARWIN_AMD64}\"|}"\
             homebrew-tap/Formula/aibodyguard.rb
           sed -i "/linux-arm64/{n;s|sha256 \".*\"|sha256 \"${LINUX_ARM64}\"|}"\
             homebrew-tap/Formula/aibodyguard.rb

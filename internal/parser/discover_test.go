@@ -37,7 +37,7 @@ func TestDiscoverSecrets(t *testing.T) {
 		t.Fatalf("failed to write node_modules/secret.env: %v", err)
 	}
 
-	secrets, err := New().Discover(tmp)
+	secrets, err := New().Discover(tmp, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,7 +87,7 @@ func TestDiscoverSecrets_DuplicateKey(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	secrets, err := New().Discover(tmp)
+	secrets, err := New().Discover(tmp, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestDiscoverSecrets_DuplicateValue(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	secrets, err := New().Discover(tmp)
+	secrets, err := New().Discover(tmp, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestDiscoverSecrets_SettingFilename(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	secrets, err := New().Discover(tmp)
+	secrets, err := New().Discover(tmp, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

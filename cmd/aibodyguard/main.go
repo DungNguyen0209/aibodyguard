@@ -12,9 +12,12 @@ import (
 	"time"
 
 	"github.com/DungNguyen0209/aibodyguard/internal/agentconfig"
+	"github.com/DungNguyen0209/aibodyguard/internal/detector"
 	"github.com/DungNguyen0209/aibodyguard/internal/mitm"
+	"github.com/DungNguyen0209/aibodyguard/internal/modelcache"
 	"github.com/DungNguyen0209/aibodyguard/internal/parser"
 	"github.com/DungNguyen0209/aibodyguard/internal/scanner"
+	uninstallpkg "github.com/DungNguyen0209/aibodyguard/internal/uninstall"
 )
 
 func main() {
@@ -26,6 +29,10 @@ func main() {
 	if args[0] == "--version" || args[0] == "-v" {
 		fmt.Fprintf(os.Stdout, "aibodyguard %s\n", Version)
 		os.Exit(0)
+	}
+	if args[0] == "--uninstall" {
+		runUninstall(args[1:])
+		return
 	}
 
 	// Find the -- separator and parse aibodyguard-own flags (before --)
@@ -64,8 +71,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Open log file — all mid-session output goes here, never to stderr
-	logPath := filepath.Join(os.TempDir(), "aibodyguard.log")
+	// Use per-session filenames (PID-scoped) so concurrent sessions never collide.
+	pid := os.Getpid()
+	logPath := filepath.Join(os.TempDir(), fmt.Sprintf("aibodyguard-%d.log", pid))
 	logFile, logErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	logWriter := io.Writer(os.Stderr)
 	if logErr == nil {
@@ -81,7 +89,27 @@ func main() {
 	}
 
 	fmt.Fprintf(logWriter, "[aibodyguard] scanning for credential files in %s...\n", cwd)
-	secrets, err := parser.New().Discover(cwd)
+
+	// Init ML model cache and detector (downloads on first run if needed)
+	cacheDir := modelcache.DefaultCacheDir()
+	var det *detector.Detector
+	if cacheErr := modelcache.EnsureReady(cacheDir); cacheErr != nil {
+		fmt.Fprintf(os.Stderr, "  warning: ML model not available, using heuristic detection only\n")
+	} else {
+		var detErr error
+		det, detErr = detector.New(cacheDir)
+		if detErr != nil {
+			fmt.Fprintf(os.Stderr, "  warning: ML model failed to load (%v), using heuristic detection only\n", detErr)
+			det = nil
+		}
+	}
+	defer func() {
+		if det != nil {
+			det.Close()
+		}
+	}()
+
+	secrets, err := parser.New().Discover(cwd, det)
 	if err != nil {
 		fmt.Fprintf(logWriter, "[aibodyguard] warning: partial scan error: %v\n", err)
 	}
@@ -115,7 +143,11 @@ func main() {
 
 	// Start TLS MITM proxy
 	s := scanner.New(secrets)
-	p, err := mitm.New(s, logWriter, &mitm.Config{EnableRequestLog: testMode})
+	reqLogPath := filepath.Join(os.TempDir(), fmt.Sprintf("aibodyguard-%d-requests.log", pid))
+	p, err := mitm.New(s, logWriter, &mitm.Config{
+		EnableRequestLog: testMode,
+		RequestLogPath:   reqLogPath,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "aibodyguard: error starting proxy: %v\n", err)
 		os.Exit(1)
@@ -123,7 +155,7 @@ func main() {
 	defer p.Shutdown()
 
 	// Write CA cert to temp file so child process can trust it
-	caPath := filepath.Join(os.TempDir(), "aibodyguard-ca.pem")
+	caPath := filepath.Join(os.TempDir(), fmt.Sprintf("aibodyguard-%d-ca.pem", pid))
 	if err := os.WriteFile(caPath, p.CACertPEM(), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "aibodyguard: error writing CA cert: %v\n", err)
 		os.Exit(1)
@@ -140,7 +172,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "  Secrets loaded : %d values\n", len(secrets))
 	if testMode {
 		fmt.Fprintf(os.Stderr, "  Mode           : TEST (request log active)\n")
-		fmt.Fprintf(os.Stderr, "  Request log    : /tmp/aibodyguard-requests.log\n")
+		fmt.Fprintf(os.Stderr, "  Request log    : %s\n", reqLogPath)
 	} else {
 		fmt.Fprintf(os.Stderr, "  Mode           : normal\n")
 	}
@@ -199,20 +231,89 @@ func main() {
 	os.Exit(exitCode)
 }
 
+func runUninstall(flags []string) {
+	skipConfirm := false
+	for _, f := range flags {
+		if f == "--yes" || f == "-y" {
+			skipConfirm = true
+		}
+	}
+
+	if !skipConfirm {
+		fmt.Fprintf(os.Stderr, "Remove AIBodyguard and all cached data (~290MB)? [y/N] ")
+		var answer string
+		fmt.Fscan(os.Stdin, &answer)
+		if answer != "y" && answer != "Y" {
+			fmt.Fprintln(os.Stderr, "Aborted.")
+			os.Exit(0)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "Uninstalling AIBodyguard...")
+
+	// 1. Remove model cache
+	cacheDir := modelcache.DefaultCacheDir()
+	if removed, err := uninstallpkg.RemoveCacheDir(cacheDir); err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: could not remove cache: %v\n", err)
+	} else if removed {
+		fmt.Fprintf(os.Stderr, "  removed: %s\n", cacheDir)
+	}
+
+	// 2. Remove all PID-scoped temp files (logs, CA certs, request logs from all past sessions)
+	tmpDir := os.TempDir()
+	patterns := []string{
+		filepath.Join(tmpDir, "aibodyguard-*.log"),
+		filepath.Join(tmpDir, "aibodyguard-*-ca.pem"),
+		filepath.Join(tmpDir, "aibodyguard-*-requests.log"),
+		// legacy fixed names from older versions
+		filepath.Join(tmpDir, "aibodyguard.log"),
+		filepath.Join(tmpDir, "aibodyguard-ca.pem"),
+		filepath.Join(tmpDir, "aibodyguard-requests.log"),
+	}
+	var tempPaths []string
+	for _, pattern := range patterns {
+		matches, _ := filepath.Glob(pattern)
+		tempPaths = append(tempPaths, matches...)
+	}
+	for _, p := range uninstallpkg.RemoveTempFiles(tempPaths) {
+		fmt.Fprintf(os.Stderr, "  removed: %s\n", p)
+	}
+
+	// 3. Remove the binary itself (last — so we can still print output before it's gone)
+	binPath, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: could not resolve binary path: %v\n", err)
+	} else {
+		if removed, err := uninstallpkg.RemoveBinary(binPath); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: could not remove binary %s: %v\n", binPath, err)
+		} else if removed {
+			fmt.Fprintf(os.Stderr, "  removed: %s\n", binPath)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "Done. AIBodyguard has been uninstalled.")
+}
+
 func printUsage() {
 	fmt.Fprintln(os.Stderr, `AIBodyguard — Credential leak prevention for AI coding agents
 
 Usage:
   aibodyguard -- <agent> [agent-args...]
   aibodyguard <agent> [agent-args...]
+  aibodyguard --uninstall [--yes]
 
 Examples:
   aibodyguard -- opencode
   aibodyguard -- claude
   aibodyguard -- aider --model claude-3-5-sonnet
+  aibodyguard --uninstall        # interactive confirmation
+  aibodyguard --uninstall --yes  # skip confirmation (scripting)
 
 AIBodyguard scans the current directory for credential files (.env, JSON, YAML,
 .properties), starts a TLS MITM proxy, and wraps the agent with HTTPS_PROXY +
 NODE_EXTRA_CA_CERTS so all outbound HTTPS traffic is intercepted and secrets
-are redacted before they reach any LLM API.`)
+are redacted before they reach any LLM API.
+
+Uninstall removes: ~/.cache/aibodyguard/ (model + lib, ~290MB), temp files,
+and the aibodyguard binary itself.`)
 }

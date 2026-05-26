@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/DungNguyen0209/aibodyguard/internal/detector"
 )
 
 // fileParser is the concrete implementation of Parser.
@@ -14,8 +16,8 @@ type fileParser struct{}
 
 // Discover walks root recursively, parses all credential files,
 // and returns a merged map of key -> secret value.
-func (p *fileParser) Discover(root string) (map[string][]string, error) {
-	return DiscoverSecrets(root)
+func (p *fileParser) Discover(root string, det *detector.Detector) (map[string][]string, error) {
+	return DiscoverSecrets(root, det)
 }
 
 var skipDirs = map[string]bool{
@@ -133,7 +135,8 @@ func mergeInto(dst map[string][]string, src map[string]string) {
 // DiscoverSecrets walks root recursively, parses all credential files,
 // and returns a merged map of key -> secret value.
 // Values that are too short or look like non-secrets are filtered out.
-func DiscoverSecrets(root string) (map[string][]string, error) {
+// If det is non-nil and available, ML-based detection is also run on each file.
+func DiscoverSecrets(root string, det *detector.Detector) (map[string][]string, error) {
 	all := make(map[string][]string)
 
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
@@ -205,6 +208,33 @@ func DiscoverSecrets(root string) (map[string][]string, error) {
 
 		mergeInto(all, parsed)
 		mergeInto(all, commented)
+
+		// ML detection: only run on files we actually parsed (recognized credential stores).
+		// Running ML on every file would be prohibitively slow.
+		if det != nil && det.Available() && parsed != nil {
+			raw, readErr := os.ReadFile(path)
+			if readErr == nil {
+				mlSecrets, mlErr := det.DetectFromContent(string(raw))
+				if mlErr == nil {
+					for _, s := range mlSecrets {
+						if s == "" {
+							continue
+						}
+						already := false
+						for _, existing := range all["_ml"] {
+							if existing == s {
+								already = true
+								break
+							}
+						}
+						if !already {
+							all["_ml"] = append(all["_ml"], s)
+						}
+					}
+				}
+			}
+		}
+
 		return nil
 	})
 

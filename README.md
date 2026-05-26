@@ -21,6 +21,12 @@
 
 ---
 
+## Architecture
+
+![AIBodyguard Architecture](docs/assets/architect.png)
+
+---
+
 AIBodyguard sits between your AI coding agent and the LLM API. It scans your project for credential files at startup, then intercepts every outbound HTTPS request and redacts any discovered secrets — API keys, database passwords, JDBC URLs — before they leave your machine.
 
 No agent configuration needed. Just prefix your command.
@@ -65,6 +71,18 @@ Auto-updates with `scoop update aibodyguard`.
 
 ## Uninstall
 
+### Built-in uninstall (all platforms)
+
+```bash
+aibodyguard --uninstall        # interactive confirmation
+aibodyguard --uninstall --yes  # skip confirmation
+```
+
+This removes:
+- `~/.cache/aibodyguard/` — ML model, vocab, and runtime library (~290MB)
+- All session temp files (`/tmp/aibodyguard-*`)
+- The `aibodyguard` binary itself
+
 ### macOS (Homebrew)
 
 ```bash
@@ -75,19 +93,13 @@ brew untap DungNguyen0209/tap  # optional
 ### Linux (curl install)
 
 ```bash
-sudo rm /usr/local/bin/aibodyguard
+aibodyguard --uninstall --yes
 ```
 
 ### Windows (Scoop)
 
 ```powershell
 scoop uninstall aibodyguard
-```
-
-### Clean up logs
-
-```bash
-rm -f /tmp/aibodyguard.log /tmp/aibodyguard-requests.log /tmp/aibodyguard-ca.pem
 ```
 
 ---
@@ -122,6 +134,9 @@ aibodyguard -- claude --some-flag
 
 # Check version
 aibodyguard --version
+
+# Uninstall everything
+aibodyguard --uninstall
 ```
 
 Run from your project root. AIBodyguard scans the current directory on every run.
@@ -136,7 +151,7 @@ aibodyguard --test opencode
 ```
 
 > [!NOTE]
-> `--test` mode writes `body_original` (containing real secret values) to `/tmp/aibodyguard-requests.log`. Keep this file private and delete it when done.
+> `--test` mode writes `body_original` (containing real secret values) to a per-session log file shown in the startup banner. Keep this file private and delete it when done.
 
 When `--test` is active, every intercepted request is appended as a JSON line:
 
@@ -155,14 +170,14 @@ When `--test` is active, every intercepted request is appended as a JSON line:
 Inspect the log:
 
 ```bash
-# Pretty-print latest request
-tail -1 /tmp/aibodyguard-requests.log | jq .
+# Pretty-print latest request (replace PID with your session PID from the banner)
+tail -1 /tmp/aibodyguard-<pid>-requests.log | jq .
 
 # Show only requests where secrets were redacted
-jq 'select(.redacted_keys | length > 0)' /tmp/aibodyguard-requests.log
+jq 'select(.redacted_keys | length > 0)' /tmp/aibodyguard-<pid>-requests.log
 
 # Watch live
-tail -f /tmp/aibodyguard-requests.log | jq .
+tail -f /tmp/aibodyguard-<pid>-requests.log | jq .
 ```
 
 ---
@@ -170,15 +185,15 @@ tail -f /tmp/aibodyguard-requests.log | jq .
 ## Startup Banner
 
 ```
-  AIBodyguard v0.1.0  active
+  AIBodyguard 0.4.0-beta  active
   ─────────────────────────────────────────
   Tool           : claude
   Secrets loaded : 42 values
   Mode           : TEST (request log active)
-  Request log    : /tmp/aibodyguard-requests.log
+  Request log    : /tmp/aibodyguard-49123-requests.log
   MITM proxy     : http://127.0.0.1:58368
-  CA cert        : /tmp/aibodyguard-ca.pem
-  Log            : /tmp/aibodyguard.log
+  CA cert        : /tmp/aibodyguard-49123-ca.pem
+  Log            : /tmp/aibodyguard-49123.log
   ─────────────────────────────────────────
 ```
 
@@ -229,7 +244,9 @@ A value is treated as a secret if it passes all of these:
 
 ## Diagnostic Log
 
-All proxy activity is written to `/tmp/aibodyguard.log` — secrets discovered at startup (with real values for local debugging), redaction events, and any errors. This log is always written, independent of `--test` mode.
+All proxy activity is written to a per-session log file (shown in the startup banner as `Log: /tmp/aibodyguard-<pid>.log`) — secrets discovered at startup, redaction events, and any errors. This log is always written, independent of `--test` mode.
+
+Each session gets its own PID-scoped files, so multiple concurrent sessions never interfere with each other.
 
 ---
 
