@@ -129,8 +129,8 @@ aibodyguard opencode
 # Wrap any other agent
 aibodyguard <agent> [agent-args...]
 
-# Pass flags to the agent using --
-aibodyguard -- claude --some-flag
+# Use -- only when agent flags clash with aibodyguard flags
+aibodyguard -- claude --version
 
 # Check version
 aibodyguard --version
@@ -141,17 +141,20 @@ aibodyguard --uninstall
 
 Run from your project root. AIBodyguard scans the current directory on every run.
 
+> [!NOTE]
+> `--` is only needed when the agent has a flag that conflicts with an aibodyguard flag (e.g. `--version`, `--test`, `--uninstall`). For normal use, just prefix with `aibodyguard`.
+
 ### --test mode
 
 By default AIBodyguard only redacts in-flight — nothing is written to disk. Use `--test` to enable full request logging for inspection and debugging:
 
 ```bash
-aibodyguard --test -- claude
-aibodyguard --test -- opencode
+aibodyguard --test claude
+aibodyguard --test opencode
 ```
 
 > [!NOTE]
-> `--test` flag must come **before** `--`. Flags after `--` are passed to the agent, not to AIBodyguard.
+> If the agent also has a `--test` flag, use `--` to separate: `aibodyguard --test -- opencode --test`
 
 > [!NOTE]
 > `--test` mode writes `body_original` (containing real secret values) to a per-session log file shown in the startup banner. Keep this file private and delete it when done.

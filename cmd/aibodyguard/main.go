@@ -337,16 +337,19 @@ func printUsage() {
 	fmt.Fprintln(os.Stderr, `AIBodyguard — Credential leak prevention for AI coding agents
 
 Usage:
-  aibodyguard -- <agent> [agent-args...]
   aibodyguard <agent> [agent-args...]
   aibodyguard --uninstall [--yes]
 
 Examples:
-  aibodyguard -- opencode
-  aibodyguard -- claude
-  aibodyguard -- aider --model claude-3-5-sonnet
+  aibodyguard opencode
+  aibodyguard claude
+  aibodyguard --test opencode
+  aibodyguard aider --model claude-3-5-sonnet
   aibodyguard --uninstall        # interactive confirmation
   aibodyguard --uninstall --yes  # skip confirmation (scripting)
+
+Use -- to separate aibodyguard flags from agent flags when they clash:
+  aibodyguard --test -- opencode --version
 
 AIBodyguard scans the current directory for credential files (.env, JSON, YAML,
 .properties), starts a TLS MITM proxy, and wraps the agent with HTTPS_PROXY +
