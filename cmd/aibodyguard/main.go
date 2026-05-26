@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -96,9 +97,10 @@ func main() {
 	if cacheErr := modelcache.EnsureReady(cacheDir); cacheErr != nil {
 		fmt.Fprintf(os.Stderr, "  warning: ML model not available, using heuristic detection only\n")
 	} else {
-		fmt.Fprintf(os.Stderr, "  Loading ML model...")
+		stop := startDots(os.Stderr, "Loading ML model")
 		var detErr error
 		det, detErr = detector.New(cacheDir)
+		stop()
 		if detErr != nil {
 			fmt.Fprintf(os.Stderr, " failed (%v), using heuristic detection only\n", detErr)
 			det = nil
@@ -112,8 +114,9 @@ func main() {
 		}
 	}()
 
-	fmt.Fprintf(os.Stderr, "  Scanning for secrets...")
+	stop2 := startDots(os.Stderr, "Scanning for secrets")
 	secrets, err := parser.New().Discover(cwd, det)
+	stop2()
 	if err != nil {
 		fmt.Fprintf(logWriter, "[aibodyguard] warning: partial scan error: %v\n", err)
 	}
@@ -240,6 +243,31 @@ func main() {
 		time.Now().Format("15:04:05"), logPath)
 
 	os.Exit(exitCode)
+}
+
+// startDots prints an animated ". .. ... .... ....." suffix after label,
+// cycling every 400ms on its own goroutine.
+// Call the returned stop() to halt — it clears the dots so the caller
+// can append " done\n" or " failed\n" on the same line.
+func startDots(w io.Writer, label string) func() {
+	var stopped atomic.Bool
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		frames := []string{".", "..", "...", "....", "....."}
+		i := 0
+		for !stopped.Load() {
+			fmt.Fprintf(w, "\r  %s%s     ", label, frames[i%len(frames)])
+			i++
+			time.Sleep(400 * time.Millisecond)
+		}
+		// Clear line and reprint label cleanly so caller can suffix it
+		fmt.Fprintf(w, "\r  %s", label)
+	}()
+	return func() {
+		stopped.Store(true)
+		<-done
+	}
 }
 
 func runUninstall(flags []string) {
