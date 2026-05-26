@@ -92,6 +92,16 @@ func (d *Detector) DetectFromContent(content string) ([]string, error) {
 // span is a byte range in the original text.
 type span struct{ start, end int }
 
+// isWordBoundary returns true for characters that delimit secret "words":
+// whitespace, newline, tab, and assignment/quoting characters.
+func isWordBoundary(c rune) bool {
+	switch c {
+	case ' ', '\t', '\n', '\r', '=', '"', '\'', ',', ';', '(', ')', '{', '}', '[', ']':
+		return true
+	}
+	return false
+}
+
 // detectInText tokenizes text, chunks it, runs inference on each chunk,
 // and extracts substrings whose tokens are labeled SECRET (score >= threshold).
 func (d *Detector) detectInText(text string) ([]string, error) {
@@ -141,12 +151,33 @@ func (d *Detector) detectInText(text string) ([]string, error) {
 		}
 	}
 
+	// Word-level promotion: expand each detected span to the boundaries of the
+	// full "word" (non-whitespace run) it falls within. This compensates for
+	// sub-word tokenisation splitting secret tokens (e.g. "wb" + "2000" or
+	// "sk" + "-" + "proj" + "-" + "abc…").
 	seen := make(map[string]struct{})
 	for sp := range secretSpans {
 		if sp.start < 0 || sp.end > len(text) || sp.start >= sp.end {
 			continue
 		}
-		s := strings.TrimSpace(text[sp.start:sp.end])
+		// Expand left to start of word (non-whitespace, non-assignment run)
+		wStart := sp.start
+		for wStart > 0 && !isWordBoundary(rune(text[wStart-1])) {
+			wStart--
+		}
+		// Expand right to end of word
+		wEnd := sp.end
+		for wEnd < len(text) && !isWordBoundary(rune(text[wEnd])) {
+			wEnd++
+		}
+		s := strings.TrimSpace(text[wStart:wEnd])
+		// Strip leading KEY= prefix: if an assignment operator is present,
+		// take only the value part (everything after the last '=').
+		if idx := strings.LastIndex(s, "="); idx >= 0 {
+			s = s[idx+1:]
+		}
+		// Strip surrounding quotes/whitespace
+		s = strings.Trim(s, `"' `)
 		if s != "" {
 			seen[s] = struct{}{}
 		}

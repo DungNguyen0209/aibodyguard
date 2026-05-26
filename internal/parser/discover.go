@@ -209,8 +209,9 @@ func DiscoverSecrets(root string, det *detector.Detector) (map[string][]string, 
 		mergeInto(all, parsed)
 		mergeInto(all, commented)
 
-		// ML detection: belt + suspenders
-		if det != nil && det.Available() {
+		// ML detection: only run on files we actually parsed (recognized credential stores).
+		// Running ML on every file would be prohibitively slow.
+		if det != nil && det.Available() && parsed != nil {
 			raw, readErr := os.ReadFile(path)
 			if readErr == nil {
 				mlSecrets, mlErr := det.DetectFromContent(string(raw))
