@@ -71,8 +71,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Open log file — all mid-session output goes here, never to stderr
-	logPath := filepath.Join(os.TempDir(), "aibodyguard.log")
+	// Use per-session filenames (PID-scoped) so concurrent sessions never collide.
+	pid := os.Getpid()
+	logPath := filepath.Join(os.TempDir(), fmt.Sprintf("aibodyguard-%d.log", pid))
 	logFile, logErr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
 	logWriter := io.Writer(os.Stderr)
 	if logErr == nil {
@@ -142,7 +143,11 @@ func main() {
 
 	// Start TLS MITM proxy
 	s := scanner.New(secrets)
-	p, err := mitm.New(s, logWriter, &mitm.Config{EnableRequestLog: testMode})
+	reqLogPath := filepath.Join(os.TempDir(), fmt.Sprintf("aibodyguard-%d-requests.log", pid))
+	p, err := mitm.New(s, logWriter, &mitm.Config{
+		EnableRequestLog: testMode,
+		RequestLogPath:   reqLogPath,
+	})
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "aibodyguard: error starting proxy: %v\n", err)
 		os.Exit(1)
@@ -150,7 +155,7 @@ func main() {
 	defer p.Shutdown()
 
 	// Write CA cert to temp file so child process can trust it
-	caPath := filepath.Join(os.TempDir(), "aibodyguard-ca.pem")
+	caPath := filepath.Join(os.TempDir(), fmt.Sprintf("aibodyguard-%d-ca.pem", pid))
 	if err := os.WriteFile(caPath, p.CACertPEM(), 0644); err != nil {
 		fmt.Fprintf(os.Stderr, "aibodyguard: error writing CA cert: %v\n", err)
 		os.Exit(1)
@@ -167,7 +172,7 @@ func main() {
 	fmt.Fprintf(os.Stderr, "  Secrets loaded : %d values\n", len(secrets))
 	if testMode {
 		fmt.Fprintf(os.Stderr, "  Mode           : TEST (request log active)\n")
-		fmt.Fprintf(os.Stderr, "  Request log    : /tmp/aibodyguard-requests.log\n")
+		fmt.Fprintf(os.Stderr, "  Request log    : %s\n", reqLogPath)
 	} else {
 		fmt.Fprintf(os.Stderr, "  Mode           : normal\n")
 	}
@@ -254,12 +259,21 @@ func runUninstall(flags []string) {
 		fmt.Fprintf(os.Stderr, "  removed: %s\n", cacheDir)
 	}
 
-	// 2. Remove temp files
+	// 2. Remove all PID-scoped temp files (logs, CA certs, request logs from all past sessions)
 	tmpDir := os.TempDir()
-	tempPaths := []string{
+	patterns := []string{
+		filepath.Join(tmpDir, "aibodyguard-*.log"),
+		filepath.Join(tmpDir, "aibodyguard-*-ca.pem"),
+		filepath.Join(tmpDir, "aibodyguard-*-requests.log"),
+		// legacy fixed names from older versions
 		filepath.Join(tmpDir, "aibodyguard.log"),
 		filepath.Join(tmpDir, "aibodyguard-ca.pem"),
 		filepath.Join(tmpDir, "aibodyguard-requests.log"),
+	}
+	var tempPaths []string
+	for _, pattern := range patterns {
+		matches, _ := filepath.Glob(pattern)
+		tempPaths = append(tempPaths, matches...)
 	}
 	for _, p := range uninstallpkg.RemoveTempFiles(tempPaths) {
 		fmt.Fprintf(os.Stderr, "  removed: %s\n", p)
