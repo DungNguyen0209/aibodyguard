@@ -248,6 +248,44 @@ A value is treated as a secret if it passes all of these:
 
 ---
 
+## Uninstalling
+
+### Homebrew
+
+```bash
+brew uninstall aibodyguard
+```
+
+This removes the binary. To also remove the ML model cache (~290MB):
+
+```bash
+rm -rf ~/.cache/aibodyguard
+```
+
+### Manual install (downloaded binary)
+
+Use the built-in uninstall command:
+
+```bash
+aibodyguard --uninstall
+```
+
+This removes:
+- `~/.cache/aibodyguard/` — ML model and onnxruntime library (~290MB)
+- All temp files — per-session logs, CA certs, request logs under `/tmp`
+- The binary itself — only if installed manually (e.g. `/usr/local/bin/aibodyguard`)
+
+> [!NOTE]
+> `--uninstall` **cannot** remove a Homebrew-managed binary. If installed via Homebrew, use `brew uninstall aibodyguard` instead.
+
+Skip the confirmation prompt for scripting:
+
+```bash
+aibodyguard --uninstall --yes
+```
+
+---
+
 ## Diagnostic Log
 
 All proxy activity is written to a per-session log file (shown in the startup banner as `Log: /tmp/aibodyguard-<pid>.log`) — secrets discovered at startup, redaction events, and any errors. This log is always written, independent of `--test` mode.
