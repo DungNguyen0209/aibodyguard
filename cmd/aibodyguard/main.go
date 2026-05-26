@@ -286,14 +286,20 @@ func printUsage() {
 Usage:
   aibodyguard -- <agent> [agent-args...]
   aibodyguard <agent> [agent-args...]
+  aibodyguard --uninstall [--yes]
 
 Examples:
   aibodyguard -- opencode
   aibodyguard -- claude
   aibodyguard -- aider --model claude-3-5-sonnet
+  aibodyguard --uninstall        # interactive confirmation
+  aibodyguard --uninstall --yes  # skip confirmation (scripting)
 
 AIBodyguard scans the current directory for credential files (.env, JSON, YAML,
 .properties), starts a TLS MITM proxy, and wraps the agent with HTTPS_PROXY +
 NODE_EXTRA_CA_CERTS so all outbound HTTPS traffic is intercepted and secrets
-are redacted before they reach any LLM API.`)
+are redacted before they reach any LLM API.
+
+Uninstall removes: ~/.cache/aibodyguard/ (model + lib, ~290MB), temp files,
+and the aibodyguard binary itself.`)
 }
