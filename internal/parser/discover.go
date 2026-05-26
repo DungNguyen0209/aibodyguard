@@ -540,7 +540,7 @@ func isLikelySecret(v string) bool {
 	if len(v) >= 16 {
 		return complexityScore >= 1
 	}
-	if len(v) >= 10 && hasDigit && (hasLower || hasUpper) {
+	if len(v) >= 6 && hasDigit && (hasLower || hasUpper) {
 		return true
 	}
 	return complexityScore >= 2
