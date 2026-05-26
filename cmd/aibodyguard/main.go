@@ -17,6 +17,7 @@ import (
 	"github.com/DungNguyen0209/aibodyguard/internal/modelcache"
 	"github.com/DungNguyen0209/aibodyguard/internal/parser"
 	"github.com/DungNguyen0209/aibodyguard/internal/scanner"
+	uninstallpkg "github.com/DungNguyen0209/aibodyguard/internal/uninstall"
 )
 
 func main() {
@@ -28,6 +29,10 @@ func main() {
 	if args[0] == "--version" || args[0] == "-v" {
 		fmt.Fprintf(os.Stdout, "aibodyguard %s\n", Version)
 		os.Exit(0)
+	}
+	if args[0] == "--uninstall" {
+		runUninstall(args[1:])
+		return
 	}
 
 	// Find the -- separator and parse aibodyguard-own flags (before --)
@@ -219,6 +224,60 @@ func main() {
 		time.Now().Format("15:04:05"), logPath)
 
 	os.Exit(exitCode)
+}
+
+func runUninstall(flags []string) {
+	skipConfirm := false
+	for _, f := range flags {
+		if f == "--yes" || f == "-y" {
+			skipConfirm = true
+		}
+	}
+
+	if !skipConfirm {
+		fmt.Fprintf(os.Stderr, "Remove AIBodyguard and all cached data (~290MB)? [y/N] ")
+		var answer string
+		fmt.Fscan(os.Stdin, &answer)
+		if answer != "y" && answer != "Y" {
+			fmt.Fprintln(os.Stderr, "Aborted.")
+			os.Exit(0)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "Uninstalling AIBodyguard...")
+
+	// 1. Remove model cache
+	cacheDir := modelcache.DefaultCacheDir()
+	if removed, err := uninstallpkg.RemoveCacheDir(cacheDir); err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: could not remove cache: %v\n", err)
+	} else if removed {
+		fmt.Fprintf(os.Stderr, "  removed: %s\n", cacheDir)
+	}
+
+	// 2. Remove temp files
+	tmpDir := os.TempDir()
+	tempPaths := []string{
+		filepath.Join(tmpDir, "aibodyguard.log"),
+		filepath.Join(tmpDir, "aibodyguard-ca.pem"),
+		filepath.Join(tmpDir, "aibodyguard-requests.log"),
+	}
+	for _, p := range uninstallpkg.RemoveTempFiles(tempPaths) {
+		fmt.Fprintf(os.Stderr, "  removed: %s\n", p)
+	}
+
+	// 3. Remove the binary itself (last — so we can still print output before it's gone)
+	binPath, err := os.Executable()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "  warning: could not resolve binary path: %v\n", err)
+	} else {
+		if removed, err := uninstallpkg.RemoveBinary(binPath); err != nil {
+			fmt.Fprintf(os.Stderr, "  warning: could not remove binary %s: %v\n", binPath, err)
+		} else if removed {
+			fmt.Fprintf(os.Stderr, "  removed: %s\n", binPath)
+		}
+	}
+
+	fmt.Fprintln(os.Stderr, "Done. AIBodyguard has been uninstalled.")
 }
 
 func printUsage() {
