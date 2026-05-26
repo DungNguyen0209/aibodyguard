@@ -38,6 +38,21 @@ aibodyguard opencode
 
 ---
 
+## Minimum System Requirements
+
+| | Minimum | Recommended |
+|---|---|---|
+| **OS** | macOS 13 (arm64), Linux (amd64/arm64), Windows 10 (amd64) | macOS 14+, Ubuntu 22.04+ |
+| **CPU** | Any 64-bit | Apple M-series or modern x86-64 |
+| **RAM** | 512 MB free | 1 GB+ free |
+| **Disk** | 400 MB free | 500 MB+ free |
+| **Network** | Internet access on first run | — |
+
+> [!NOTE]
+> On first run, AIBodyguard downloads the ML model (~67MB) and ONNX Runtime library (~220MB) to `~/.cache/aibodyguard/`. Subsequent runs are fully offline. Total disk usage after setup: ~290MB.
+
+---
+
 ## Installation
 
 ### macOS
