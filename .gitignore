@@ -8,3 +8,12 @@
 
 # macOS
 .DS_Store
+
+# Superpowers / local planning docs (coding only, not for repo)
+docs/superpowers/
+CLAUDE.md
+AGENTS.md
+GEMINI.md
+opencode.json
+opencode.jsonc
+.opencode/
