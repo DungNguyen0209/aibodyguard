@@ -155,8 +155,8 @@ func main() {
 		}
 	}
 
-	// Start TLS MITM proxy
-	s := scanner.New(secrets)
+	// Start TLS MITM proxy with runtime ML detection
+	s := scanner.NewMLScanner(secrets, det, logWriter)
 	reqLogPath := filepath.Join(os.TempDir(), fmt.Sprintf("aibodyguard-%d-requests.log", pid))
 	p, err := mitm.New(s, logWriter, &mitm.Config{
 		EnableRequestLog: testMode,
