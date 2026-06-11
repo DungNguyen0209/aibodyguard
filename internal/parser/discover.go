@@ -413,9 +413,9 @@ func looksLikeEnvFile(path string) bool {
 // It uses a positive signal approach: values must show characteristics of real
 // secrets (sufficient length + entropy markers) rather than just "not obviously not a secret".
 func IsLikelySecret(v string) bool {
-	// Must be printable ASCII only — binary data is never a secret we want to redact
+	// Must not contain ASCII control characters — these indicate binary data
 	for _, c := range v {
-		if c < 0x20 || c > 0x7e {
+		if c < 0x20 || c == 0x7f {
 			return false
 		}
 	}
