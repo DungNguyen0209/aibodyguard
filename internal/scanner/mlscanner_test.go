@@ -290,6 +290,58 @@ func TestMLScanner_DynamicNotInStatic(t *testing.T) {
 	}
 }
 
+func TestMLScanner_AddDynamic(t *testing.T) {
+	s := NewMLScanner(nil, nil, io.Discard)
+
+	s.AddDynamic("new-secret-1", "new-secret-2")
+
+	body := `{"k1":"new-secret-1","k2":"new-secret-2"}`
+	result, matched := s.Redact(body)
+
+	if strings.Contains(result, "new-secret-1") {
+		t.Error("new-secret-1 should be redacted")
+	}
+	if strings.Contains(result, "new-secret-2") {
+		t.Error("new-secret-2 should be redacted")
+	}
+	if len(matched) != 2 {
+		t.Errorf("expected 2 matches, got %d: %v", len(matched), matched)
+	}
+}
+
+func TestMLScanner_AddDynamic_Deduplicates(t *testing.T) {
+	s := NewMLScanner(nil, nil, io.Discard)
+
+	s.AddDynamic("dup")
+	s.AddDynamic("dup")
+	s.AddDynamic("unique")
+
+	s.mu.RLock()
+	n := len(s.dynamic)
+	s.mu.RUnlock()
+
+	if n != 2 {
+		t.Errorf("expected 2 dynamic secrets after dedup, got %d", n)
+	}
+}
+
+func TestMLScanner_AddDynamic_StaticNotDuplicated(t *testing.T) {
+	secrets := map[string][]string{
+		"KEY": {"already-static"},
+	}
+	s := NewMLScanner(secrets, nil, io.Discard)
+
+	s.AddDynamic("already-static")
+
+	s.mu.RLock()
+	n := len(s.dynamic)
+	s.mu.RUnlock()
+
+	if n != 0 {
+		t.Errorf("expected 0 dynamic secrets (static already exists), got %d", n)
+	}
+}
+
 type assertError string
 
 func (e assertError) Error() string { return string(e) }

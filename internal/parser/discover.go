@@ -113,10 +113,10 @@ var sourceCodeExts = map[string]bool{
 }
 
 // mergeInto adds values from src into dst, deduplicating per key.
-// Values that do not pass isLikelySecret are skipped.
+// Values that do not pass IsLikelySecret are skipped.
 func mergeInto(dst map[string][]string, src map[string]string) {
 	for k, v := range src {
-		if !isLikelySecret(v) {
+		if !IsLikelySecret(v) {
 			continue
 		}
 		already := false
@@ -217,7 +217,7 @@ func DiscoverSecrets(root string, det *detector.Detector) (map[string][]string, 
 				mlSecrets, mlErr := det.DetectFromContent(string(raw))
 				if mlErr == nil {
 					for _, s := range mlSecrets {
-						if s == "" || !isLikelySecret(s) {
+						if s == "" || !IsLikelySecret(s) {
 							continue
 						}
 						already := false
@@ -409,10 +409,10 @@ func looksLikeEnvFile(path string) bool {
 	return false
 }
 
-// isLikelySecret returns true if a value looks like a real secret credential.
+// IsLikelySecret returns true if a value looks like a real secret credential.
 // It uses a positive signal approach: values must show characteristics of real
 // secrets (sufficient length + entropy markers) rather than just "not obviously not a secret".
-func isLikelySecret(v string) bool {
+func IsLikelySecret(v string) bool {
 	// Must be printable ASCII only — binary data is never a secret we want to redact
 	for _, c := range v {
 		if c < 0x20 || c > 0x7e {

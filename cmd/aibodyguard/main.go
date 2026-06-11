@@ -18,6 +18,7 @@ import (
 	"github.com/DungNguyen0209/aibodyguard/internal/modelcache"
 	"github.com/DungNguyen0209/aibodyguard/internal/parser"
 	"github.com/DungNguyen0209/aibodyguard/internal/scanner"
+	"github.com/DungNguyen0209/aibodyguard/internal/watcher"
 	uninstallpkg "github.com/DungNguyen0209/aibodyguard/internal/uninstall"
 )
 
@@ -157,6 +158,33 @@ func main() {
 
 	// Start TLS MITM proxy with runtime ML detection
 	s := scanner.NewMLScanner(secrets, det, logWriter)
+
+	// Start credential file watcher — detects new/modified secrets at runtime
+	watchInterval := 10 * time.Second
+	w, wErr := watcher.New(cwd, det)
+	if wErr != nil {
+		fmt.Fprintf(logWriter, "[aibodyguard] watcher init error: %v (file watching disabled)\n", wErr)
+	} else {
+		go func() {
+			ticker := time.NewTicker(watchInterval)
+			defer ticker.Stop()
+			for range ticker.C {
+				newSecrets, err := w.Scan()
+				if err != nil {
+					fmt.Fprintf(logWriter, "[aibodyguard] watcher scan error: %v\n", err)
+					continue
+				}
+				if len(newSecrets) > 0 {
+					s.AddDynamic(newSecrets...)
+					for _, secret := range newSecrets {
+						fmt.Fprintf(logWriter, "[aibodyguard] file watcher discovered new secret: %s\n", secret)
+					}
+				}
+			}
+		}()
+		fmt.Fprintf(logWriter, "[aibodyguard] file watcher active (polling every %s)\n", watchInterval)
+	}
+
 	reqLogPath := filepath.Join(os.TempDir(), fmt.Sprintf("aibodyguard-%d-requests.log", pid))
 	p, err := mitm.New(s, logWriter, &mitm.Config{
 		EnableRequestLog: testMode,

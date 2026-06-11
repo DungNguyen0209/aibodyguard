@@ -81,6 +81,33 @@ func (s *MLScanner) Redact(input string) (string, []string) {
 	return result, matched
 }
 
+// AddDynamic adds secret values to the dynamic store.
+// Secrets already present in the static or dynamic store are silently skipped.
+// This is called by the file watcher when credential files change at runtime.
+func (s *MLScanner) AddDynamic(secrets ...string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for _, secret := range secrets {
+		if s.addDynamicUnsafe(secret) && s.log != nil {
+			fmt.Fprintf(s.log, "[aibodyguard] added dynamic secret: %s\n", secret)
+		}
+	}
+}
+
+// addDynamicUnsafe adds one secret to the dynamic store.
+// Caller must hold s.mu write lock.
+// Returns true if the secret was actually added (not a duplicate).
+func (s *MLScanner) addDynamicUnsafe(secret string) bool {
+	if _, ok := s.static[secret]; ok {
+		return false
+	}
+	if _, ok := s.dynamic[secret]; ok {
+		return false
+	}
+	s.dynamic[secret] = struct{}{}
+	return true
+}
+
 // discover runs the ML detector on input and adds any new secrets
 // not already in the static or dynamic store.
 func (s *MLScanner) discover(input string) {
@@ -96,14 +123,7 @@ func (s *MLScanner) discover(input string) {
 	}
 	s.mu.Lock()
 	for _, secret := range newSecrets {
-		if _, ok := s.static[secret]; ok {
-			continue
-		}
-		if _, ok := s.dynamic[secret]; ok {
-			continue
-		}
-		s.dynamic[secret] = struct{}{}
-		if s.log != nil {
+		if s.addDynamicUnsafe(secret) && s.log != nil {
 			fmt.Fprintf(s.log, "[aibodyguard] ML discovered new secret at runtime: %s\n", secret)
 		}
 	}
