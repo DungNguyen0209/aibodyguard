@@ -342,6 +342,109 @@ func TestMLScanner_AddDynamic_StaticNotDuplicated(t *testing.T) {
 	}
 }
 
+func TestMLScanner_JSONAware_OnlyRedactsStrings(t *testing.T) {
+	s := NewMLScanner(nil, nil, io.Discard)
+	s.AddDynamic("secret")
+
+	// JSON key named "secret" should NOT be corrupted
+	body := `{"secret":"value-with-secret-inside","other":"no-secret-here"}`
+	result, matched := s.Redact(body)
+
+	if strings.Contains(result, "value-with-secret-inside") {
+		t.Error("string value should be redacted")
+	}
+	if !strings.Contains(result, `"secret"`) {
+		t.Error("key 'secret' should NOT be redacted - would corrupt JSON")
+	}
+	if len(matched) != 1 {
+		t.Errorf("expected 1 match, got %d: %v", len(matched), matched)
+	}
+}
+
+func TestMLScanner_JSONAware_NestedValues(t *testing.T) {
+	s := NewMLScanner(nil, nil, io.Discard)
+	s.AddDynamic("secret123")
+
+	body := `{"a":{"b":[{"c":"prefix secret123 suffix"}]}}`
+	result, matched := s.Redact(body)
+
+	if !strings.Contains(result, `"c":"prefix **** suffix"`) {
+		t.Errorf("nested string value should be redacted, got: %s", result)
+	}
+	if len(matched) != 1 {
+		t.Errorf("expected 1 match, got %d: %v", len(matched), matched)
+	}
+}
+
+func TestMLScanner_JSONAware_NonJSONBody(t *testing.T) {
+	s := NewMLScanner(nil, nil, io.Discard)
+	s.AddDynamic("secret")
+
+	// Non-JSON body should still be redacted via naive replacement
+	body := `this is a secret value`
+	result, matched := s.Redact(body)
+
+	if strings.Contains(result, "secret") {
+		t.Error("secret should be redacted in non-JSON body")
+	}
+	if len(matched) != 1 {
+		t.Errorf("expected 1 match, got %d", len(matched))
+	}
+}
+
+func TestMLScanner_JSONAware_NumberValuesUntouched(t *testing.T) {
+	s := NewMLScanner(nil, nil, io.Discard)
+	s.AddDynamic("42")
+
+	body := `{"port":42,"name":"port 42 is here"}`
+	result, matched := s.Redact(body)
+
+	// Number 42 should NOT be replaced (it's a JSON number, not a string)
+	if strings.Contains(result, `"port":****`) {
+		t.Errorf("number value 42 should not be redacted: %s", result)
+	}
+	// String value containing "42" SHOULD be redacted
+	if !strings.Contains(result, `"port **** is here"`) {
+		t.Errorf("string containing 42 should be redacted: %s", result)
+	}
+	if len(matched) != 1 {
+		t.Errorf("expected 1 match, got %d", len(matched))
+	}
+}
+
+func TestMLScanner_JSONAware_BooleanValuesUntouched(t *testing.T) {
+	s := NewMLScanner(nil, nil, io.Discard)
+	s.AddDynamic("true")
+
+	body := `{"enabled":true,"msg":"this is true"}`
+	result, matched := s.Redact(body)
+
+	if strings.Contains(result, `"enabled":****`) {
+		t.Errorf("boolean true should not be redacted: %s", result)
+	}
+	if !strings.Contains(result, `"this is ****"`) {
+		t.Errorf("string containing true should be redacted: %s", result)
+	}
+	if len(matched) != 1 {
+		t.Errorf("expected 1 match, got %d", len(matched))
+	}
+}
+
+func TestMLScanner_JSONAware_ArrayValues(t *testing.T) {
+	s := NewMLScanner(nil, nil, io.Discard)
+	s.AddDynamic("redact-me")
+
+	body := `{"items":["redact-me","keep-me","also redact-me"]}`
+	result, matched := s.Redact(body)
+
+	if strings.Contains(result, "redact-me") {
+		t.Errorf("array string elements should be redacted: %s", result)
+	}
+	if len(matched) != 1 {
+		t.Errorf("expected 1 match, got %d: %v", len(matched), matched)
+	}
+}
+
 type assertError string
 
 func (e assertError) Error() string { return string(e) }
