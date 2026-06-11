@@ -480,7 +480,7 @@ func IsLikelySecret(v string) bool {
 			hasUpper = true
 		case c >= 'a' && c <= 'z':
 			hasLower = true
-		case c == '.' || c == '-' || c == '_' || c == '/' || c == ':' || c == '@':
+		case c == ' ' || c == '.' || c == '-' || c == '_' || c == '/' || c == ':' || c == '@':
 			// allowed config chars — keep onlyConfigChars true
 		default:
 			hasSpecial = true
@@ -512,6 +512,28 @@ func IsLikelySecret(v string) bool {
 	// Short values with no special chars or digits are not secrets
 	if !hasDigit && !hasSpecial && len(v) < 20 {
 		return false
+	}
+
+	// Dot-separated config paths (Spring property keys, Java class names, etc.)
+	// are not secrets. They consist of alphabetic words separated by dots.
+	// Each segment may contain at most one embedded digit (e.g. "Resilience4j").
+	if !hasSpecial && strings.Contains(v, ".") && len(v) >= 10 {
+		isConfigPath := true
+		for _, seg := range strings.Split(v, ".") {
+			dCount := 0
+			for _, c := range seg {
+				if c >= '0' && c <= '9' {
+					dCount++
+				}
+			}
+			if dCount > 1 {
+				isConfigPath = false
+				break
+			}
+		}
+		if isConfigPath {
+			return false
+		}
 	}
 
 	// Require at least some complexity: either special chars, or mixed case+digits, or long enough.
