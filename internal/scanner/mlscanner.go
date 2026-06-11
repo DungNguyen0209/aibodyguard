@@ -9,7 +9,6 @@ import (
 	"sync"
 
 	"github.com/DungNguyen0209/aibodyguard/internal/detector"
-	"github.com/DungNguyen0209/aibodyguard/internal/parser"
 )
 
 // secretDetector is satisfied by *detector.Detector and can be faked in tests.
@@ -54,9 +53,10 @@ func NewMLScanner(secrets map[string][]string, det *detector.Detector, log io.Wr
 // subsequent requests redact them by string match.
 // For JSON bodies, secrets are only replaced within string values
 // to avoid corrupting JSON structure.
+// NOTE: ML detection on request bodies is disabled — the distilbert
+// model is trained on credential files and produces too many false
+// positives on chat traffic. Only file-sourced secrets are used.
 func (s *MLScanner) Redact(input string) (string, []string) {
-	s.discover(input)
-
 	s.mu.RLock()
 	total := len(s.static) + len(s.dynamic)
 	vals := make([]string, 0, total)
@@ -177,29 +177,4 @@ func (s *MLScanner) addDynamicUnsafe(secret string) bool {
 	}
 	s.dynamic[secret] = struct{}{}
 	return true
-}
-
-// discover runs the ML detector on input and adds any new secrets
-// not already in the static or dynamic store.
-func (s *MLScanner) discover(input string) {
-	if s.det == nil || !s.det.Available() {
-		return
-	}
-	newSecrets, err := s.det.DetectFromContent(input)
-	if err != nil {
-		if s.log != nil {
-			fmt.Fprintf(s.log, "[aibodyguard] ML detection error: %v\n", err)
-		}
-		return
-	}
-	s.mu.Lock()
-	for _, secret := range newSecrets {
-		if !parser.IsLikelySecret(secret) {
-			continue
-		}
-		if s.addDynamicUnsafe(secret) && s.log != nil {
-			fmt.Fprintf(s.log, "[aibodyguard] ML discovered new secret at runtime: %s\n", secret)
-		}
-	}
-	s.mu.Unlock()
 }

@@ -440,6 +440,11 @@ func IsLikelySecret(v string) bool {
 		return false
 	}
 
+	// Tool call IDs like "call_abc123" are API identifiers, not secrets.
+	if strings.HasPrefix(v, "call_") || strings.HasPrefix(v, "toolu_") {
+		return false
+	}
+
 	lower := strings.ToLower(v)
 
 	// Hard exclusions — known non-secret values
