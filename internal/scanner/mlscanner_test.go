@@ -59,30 +59,30 @@ func TestMLScanner_StaticOnly_NoMatch(t *testing.T) {
 
 func TestMLScanner_DynamicDiscovery(t *testing.T) {
 	secrets := map[string][]string{
-		"STATIC_KEY": {"static-secret"},
+		"STATIC_KEY": {"static-secret-123"},
 	}
 	det := &fakeDetector{
 		available: true,
-		secrets:   []string{"new-dynamic-secret"},
+		secrets:   []string{"new-dynamic-456"},
 	}
 	s := NewMLScanner(secrets, nil, io.Discard)
 	s.det = det
 
-	body := `{"key":"new-dynamic-secret"}`
+	body := `{"key":"new-dynamic-456"}`
 	result, matched := s.Redact(body)
 
-	if strings.Contains(result, "new-dynamic-secret") {
+	if strings.Contains(result, "new-dynamic-456") {
 		t.Error("dynamic secret should be redacted")
 	}
-	if len(matched) != 1 || matched[0] != "new-dynamic-secret" {
-		t.Errorf("expected [new-dynamic-secret], got %v", matched)
+	if len(matched) != 1 || matched[0] != "new-dynamic-456" {
+		t.Errorf("expected [new-dynamic-456], got %v", matched)
 	}
 
 	// Second call — should redact from dynamic store (not re-inferred)
-	body2 := `{"key":"new-dynamic-secret"}`
+	body2 := `{"key":"new-dynamic-456"}`
 	result2, matched2 := s.Redact(body2)
 
-	if strings.Contains(result2, "new-dynamic-secret") {
+	if strings.Contains(result2, "new-dynamic-456") {
 		t.Error("dynamic secret should be redacted on second call")
 	}
 	if len(matched2) != 1 {
@@ -92,17 +92,17 @@ func TestMLScanner_DynamicDiscovery(t *testing.T) {
 
 func TestMLScanner_NoDuplicateDynamic(t *testing.T) {
 	secrets := map[string][]string{
-		"STATIC": {"static-val"},
+		"STATIC": {"static-val-123"},
 	}
 	det := &fakeDetector{
 		available: true,
-		secrets:   []string{"dup-secret"},
+		secrets:   []string{"dup-secret-123"},
 	}
 	s := NewMLScanner(secrets, nil, io.Discard)
 	s.det = det
 
-	s.Redact(`{"k":"dup-secret"}`)
-	s.Redact(`{"k":"dup-secret"}`)
+	s.Redact(`{"k":"dup-secret-123"}`)
+	s.Redact(`{"k":"dup-secret-123"}`)
 
 	s.mu.RLock()
 	dynLen := len(s.dynamic)
@@ -116,16 +116,16 @@ func TestMLScanner_NoDuplicateDynamic(t *testing.T) {
 func TestMLScanner_StaticOverDynamic(t *testing.T) {
 	// If a secret is already in static, it should not be added to dynamic.
 	secrets := map[string][]string{
-		"API_KEY": {"already-known"},
+		"API_KEY": {"already-known-123"},
 	}
 	det := &fakeDetector{
 		available: true,
-		secrets:   []string{"already-known"},
+		secrets:   []string{"already-known-123"},
 	}
 	s := NewMLScanner(secrets, nil, io.Discard)
 	s.det = det
 
-	s.Redact(`{"k":"already-known"}`)
+	s.Redact(`{"k":"already-known-123"}`)
 
 	s.mu.RLock()
 	dynLen := len(s.dynamic)
@@ -210,23 +210,23 @@ func TestMLScanner_EmptyBody(t *testing.T) {
 
 func TestMLScanner_StaticAndDynamicCombined(t *testing.T) {
 	secrets := map[string][]string{
-		"DB_PW": {"static-pw"},
+		"DB_PW": {"static-pw-123"},
 	}
 	det := &fakeDetector{
 		available: true,
-		secrets:   []string{"dynamic-key"},
+		secrets:   []string{"dynamic-key-456"},
 	}
 	s := NewMLScanner(secrets, nil, io.Discard)
 	s.det = det
 
-	body := `{"static":"static-pw","dynamic":"dynamic-key"}`
+	body := `{"static":"static-pw-123","dynamic":"dynamic-key-456"}`
 	result, matched := s.Redact(body)
 
-	if strings.Contains(result, "static-pw") {
-		t.Error("static-pw should be redacted")
+	if strings.Contains(result, "static-pw-123") {
+		t.Error("static-pw-123 should be redacted")
 	}
-	if strings.Contains(result, "dynamic-key") {
-		t.Error("dynamic-key should be redacted")
+	if strings.Contains(result, "dynamic-key-456") {
+		t.Error("dynamic-key-456 should be redacted")
 	}
 	if len(matched) != 2 {
 		t.Errorf("expected 2 matched values, got %d: %v", len(matched), matched)
@@ -235,11 +235,11 @@ func TestMLScanner_StaticAndDynamicCombined(t *testing.T) {
 
 func TestMLScanner_ConcurrentSafety(t *testing.T) {
 	secrets := map[string][]string{
-		"STATIC": {"static-val"},
+		"STATIC": {"static-val-123"},
 	}
 	det := &fakeDetector{
 		available: true,
-		secrets:   []string{"concurrent-secret"},
+		secrets:   []string{"concurrent-456"},
 	}
 	s := NewMLScanner(secrets, nil, io.Discard)
 	s.det = det
@@ -249,7 +249,7 @@ func TestMLScanner_ConcurrentSafety(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			_, _ = s.Redact(`{"k":"concurrent-secret"}`)
+			_, _ = s.Redact(`{"k":"concurrent-456"}`)
 		}()
 	}
 	wg.Wait()
@@ -266,24 +266,24 @@ func TestMLScanner_ConcurrentSafety(t *testing.T) {
 func TestMLScanner_DynamicNotInStatic(t *testing.T) {
 	// Verify that dynamic secrets don't pollute the static store.
 	secrets := map[string][]string{
-		"A": {"a-value"},
+		"A": {"a-value-123"},
 	}
 	det := &fakeDetector{
 		available: true,
-		secrets:   []string{"b-value"},
+		secrets:   []string{"b-value-456"},
 	}
 	s := NewMLScanner(secrets, nil, io.Discard)
 	s.det = det
 
-	s.Redact(`{"k":"b-value"}`)
+	s.Redact(`{"k":"b-value-456"}`)
 
 	s.mu.RLock()
-	_, inStatic := s.static["b-value"]
+	_, inStatic := s.static["b-value-456"]
 	dynLen := len(s.dynamic)
 	s.mu.RUnlock()
 
 	if inStatic {
-		t.Error("b-value should NOT be in static store")
+		t.Error("b-value-456 should NOT be in static store")
 	}
 	if dynLen != 1 {
 		t.Errorf("expected 1 dynamic secret, got %d", dynLen)

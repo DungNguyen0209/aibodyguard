@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/DungNguyen0209/aibodyguard/internal/detector"
+	"github.com/DungNguyen0209/aibodyguard/internal/parser"
 )
 
 // secretDetector is satisfied by *detector.Detector and can be faked in tests.
@@ -193,6 +194,9 @@ func (s *MLScanner) discover(input string) {
 	}
 	s.mu.Lock()
 	for _, secret := range newSecrets {
+		if !parser.IsLikelySecret(secret) {
+			continue
+		}
 		if s.addDynamicUnsafe(secret) && s.log != nil {
 			fmt.Fprintf(s.log, "[aibodyguard] ML discovered new secret at runtime: %s\n", secret)
 		}
