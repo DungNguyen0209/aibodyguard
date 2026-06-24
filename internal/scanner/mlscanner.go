@@ -17,16 +17,22 @@ type secretDetector interface {
 	DetectFromContent(content string) ([]string, error)
 }
 
-// MLScanner extends the static secret scanner with runtime ML detection.
-// It wraps a static set of known secrets (from file scanning) plus a
-// dynamically-grown set discovered at runtime via the distilbert model.
+// SecretWatcher discovers new credential values at runtime from changed files.
+type SecretWatcher interface {
+	Check() ([]string, error)
+}
+
+// MLScanner extends the static secret scanner with runtime ML detection and
+// file watching. On each Redact call it checks the watcher for newly changed
+// credential files, discovering secrets at request time instead of on a timer.
 // Implements the Scanner interface — drop-in replacement.
 type MLScanner struct {
-	static  map[string]struct{}
-	dynamic map[string]struct{}
-	det     secretDetector
-	mu      sync.RWMutex
-	log     io.Writer
+	static   map[string]struct{}
+	dynamic  map[string]struct{}
+	det      secretDetector
+	watcher  SecretWatcher
+	mu       sync.RWMutex
+	log      io.Writer
 }
 
 // NewMLScanner returns an MLScanner that redacts known secrets and
@@ -48,15 +54,32 @@ func NewMLScanner(secrets map[string][]string, det *detector.Detector, log io.Wr
 	}
 }
 
-// Redact redacts known secrets and discovers new ones via ML.
-// Newly discovered secrets are added to the dynamic store so all
-// subsequent requests redact them by string match.
-// For JSON bodies, secrets are only replaced within string values
-// to avoid corrupting JSON structure.
+// SetWatcher attaches a file watcher to the scanner. When set, every Redact
+// call will first check the watcher for newly changed credential files.
+func (s *MLScanner) SetWatcher(w SecretWatcher) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.watcher = w
+}
+
+// Redact redacts known secrets and first checks the watcher for
+// newly changed credential files (if a watcher is configured).
 // NOTE: ML detection on request bodies is disabled — the distilbert
 // model is trained on credential files and produces too many false
 // positives on chat traffic. Only file-sourced secrets are used.
 func (s *MLScanner) Redact(input string) (string, []string) {
+	// Check watcher for file changes before redacting (request-driven)
+	if s.watcher != nil {
+		if newSecrets, err := s.watcher.Check(); err == nil && len(newSecrets) > 0 {
+			s.AddDynamic(newSecrets...)
+			for _, secret := range newSecrets {
+				if s.log != nil {
+					fmt.Fprintf(s.log, "[aibodyguard] file watcher discovered new secret: %s\n", secret)
+				}
+			}
+		}
+	}
+
 	s.mu.RLock()
 	total := len(s.static) + len(s.dynamic)
 	vals := make([]string, 0, total)
@@ -80,9 +103,6 @@ func (s *MLScanner) Redact(input string) (string, []string) {
 }
 
 // redactString applies secret replacement to input text.
-// If input is valid JSON, replacement only touches string values
-// (never keys, numbers, booleans, or structural elements).
-// For non-JSON text, naive string replacement is used.
 func (s *MLScanner) redactString(input string, vals []string, matched *[]string) string {
 	seen := make(map[string]struct{})
 
@@ -153,8 +173,6 @@ func (s *MLScanner) redactJSONValue(v *interface{}, vals []string, seen map[stri
 }
 
 // AddDynamic adds secret values to the dynamic store.
-// Secrets already present in the static or dynamic store are silently skipped.
-// This is called by the file watcher when credential files change at runtime.
 func (s *MLScanner) AddDynamic(secrets ...string) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -165,9 +183,6 @@ func (s *MLScanner) AddDynamic(secrets ...string) {
 	}
 }
 
-// addDynamicUnsafe adds one secret to the dynamic store.
-// Caller must hold s.mu write lock.
-// Returns true if the secret was actually added (not a duplicate).
 func (s *MLScanner) addDynamicUnsafe(secret string) bool {
 	if _, ok := s.static[secret]; ok {
 		return false

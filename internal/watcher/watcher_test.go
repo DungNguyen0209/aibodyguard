@@ -23,8 +23,7 @@ func TestNewWatcher(t *testing.T) {
 	}
 }
 
-func TestScanReturnsNoNewSecretsOnFirstCall(t *testing.T) {
-	// First call (in New) scans and caches. Second call should find nothing new.
+func TestCheckReturnsNoNewSecretsOnSecondCall(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, ".env"), []byte("PASSWORD=test1234\n"), 0644)
 
@@ -33,16 +32,16 @@ func TestScanReturnsNoNewSecretsOnFirstCall(t *testing.T) {
 		t.Fatalf("watcher.New: %v", err)
 	}
 
-	secrets, err := w.Scan()
+	secrets, err := w.Check()
 	if err != nil {
-		t.Fatalf("Scan: %v", err)
+		t.Fatalf("Check: %v", err)
 	}
 	if len(secrets) != 0 {
 		t.Errorf("expected 0 new secrets on unchanged file, got %d: %v", len(secrets), secrets)
 	}
 }
 
-func TestScanDetectsNewSecretInChangedFile(t *testing.T) {
+func TestCheckDetectsNewSecretInChangedFile(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")
 	os.WriteFile(envPath, []byte("PASSWORD=old1234\n"), 0644)
@@ -52,12 +51,11 @@ func TestScanDetectsNewSecretInChangedFile(t *testing.T) {
 		t.Fatalf("watcher.New: %v", err)
 	}
 
-	// Modify the file with a new secret (must pass IsLikelySecret)
 	os.WriteFile(envPath, []byte("PASSWORD=old1234\nNEW_KEY=sk-new-key-abc123\n"), 0644)
 
-	secrets, err := w.Scan()
+	secrets, err := w.Check()
 	if err != nil {
-		t.Fatalf("Scan: %v", err)
+		t.Fatalf("Check: %v", err)
 	}
 
 	found := false
@@ -71,17 +69,16 @@ func TestScanDetectsNewSecretInChangedFile(t *testing.T) {
 		t.Errorf("expected sk-new-key-abc123 in new secrets, got %v", secrets)
 	}
 
-	// Third call — no more new secrets
-	secrets, err = w.Scan()
+	secrets, err = w.Check()
 	if err != nil {
-		t.Fatalf("Scan: %v", err)
+		t.Fatalf("Check: %v", err)
 	}
 	if len(secrets) != 0 {
 		t.Errorf("expected 0 new secrets on third call, got %d: %v", len(secrets), secrets)
 	}
 }
 
-func TestScanDetectsNewFile(t *testing.T) {
+func TestCheckDetectsNewFile(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, ".env"), []byte("PASSWORD=first123\n"), 0644)
 
@@ -90,12 +87,11 @@ func TestScanDetectsNewFile(t *testing.T) {
 		t.Fatalf("watcher.New: %v", err)
 	}
 
-	// Create a new credential file (value must pass IsLikelySecret)
 	os.WriteFile(filepath.Join(dir, ".env.production"), []byte("API_KEY=prod-key-789xyz\n"), 0644)
 
-	secrets, err := w.Scan()
+	secrets, err := w.Check()
 	if err != nil {
-		t.Fatalf("Scan: %v", err)
+		t.Fatalf("Check: %v", err)
 	}
 
 	found := false
@@ -110,7 +106,7 @@ func TestScanDetectsNewFile(t *testing.T) {
 	}
 }
 
-func TestScanSkipsSourceCodeFiles(t *testing.T) {
+func TestCheckSkipsSourceCodeFiles(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "app.go"), []byte("var x = \"not-a-secret-123\"\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".env"), []byte("SECRET=real-value\n"), 0644)
@@ -120,9 +116,9 @@ func TestScanSkipsSourceCodeFiles(t *testing.T) {
 		t.Fatalf("watcher.New: %v", err)
 	}
 
-	secrets, err := w.Scan()
+	secrets, err := w.Check()
 	if err != nil {
-		t.Fatalf("Scan: %v", err)
+		t.Fatalf("Check: %v", err)
 	}
 
 	for _, s := range secrets {
@@ -132,13 +128,12 @@ func TestScanSkipsSourceCodeFiles(t *testing.T) {
 	}
 }
 
-func TestScanSkipsNodeModules(t *testing.T) {
+func TestCheckSkipsNodeModules(t *testing.T) {
 	dir := t.TempDir()
 	nmDir := filepath.Join(dir, "node_modules")
 	os.MkdirAll(nmDir, 0755)
 	os.WriteFile(filepath.Join(nmDir, ".env"), []byte("FAKE=skip-this-123\n"), 0644)
 
-	// Real project .env
 	os.WriteFile(filepath.Join(dir, ".env"), []byte("REAL=actual-value\n"), 0644)
 
 	w, err := watcher.New(dir, nil)
@@ -146,9 +141,9 @@ func TestScanSkipsNodeModules(t *testing.T) {
 		t.Fatalf("watcher.New: %v", err)
 	}
 
-	secrets, err := w.Scan()
+	secrets, err := w.Check()
 	if err != nil {
-		t.Fatalf("Scan: %v", err)
+		t.Fatalf("Check: %v", err)
 	}
 
 	for _, s := range secrets {
@@ -158,7 +153,7 @@ func TestScanSkipsNodeModules(t *testing.T) {
 	}
 }
 
-func TestScanDeletedFile(t *testing.T) {
+func TestCheckDeletedFile(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")
 	os.WriteFile(envPath, []byte("KEY=value123\n"), 0644)
@@ -168,12 +163,11 @@ func TestScanDeletedFile(t *testing.T) {
 		t.Fatalf("watcher.New: %v", err)
 	}
 
-	// Delete the file
 	os.Remove(envPath)
 
-	secrets, err := w.Scan()
+	secrets, err := w.Check()
 	if err != nil {
-		t.Fatalf("Scan: %v", err)
+		t.Fatalf("Check: %v", err)
 	}
 	if len(secrets) != 0 {
 		t.Errorf("expected 0 new secrets after file deletion, got %d: %v", len(secrets), secrets)

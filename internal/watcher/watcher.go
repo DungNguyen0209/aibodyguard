@@ -5,48 +5,70 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"time"
 
 	"github.com/DungNguyen0209/aibodyguard/internal/detector"
 	"github.com/DungNguyen0209/aibodyguard/internal/parser"
 )
 
 // Watcher monitors credential files for changes and reports newly
-// discovered secrets. It tracks files by path + modtime + size, so
-// unchanged files are skipped without re-parsing.
+// discovered secrets. It maintains a hashmap (absolutePath → modTime)
+// and compares on each Check call, re-parsing only changed/new files.
 type Watcher struct {
-	root    string
-	det     *detector.Detector
-	files   map[string]*cachedFile
-	allSeen map[string]struct{}
+	root      string
+	det       *detector.Detector
+	files     map[string]*fileInfo // absolutePath → last known state
+	allSeen   map[string]struct{}
+	mu        sync.Mutex
+	lastCheck time.Time
+	checkMin  time.Duration
 }
 
-// cachedFile holds the last known state of one credential file.
-type cachedFile struct {
-	modTime int64
-	size    int64
+type fileInfo struct {
+	modTime int64 // UnixNano
 	values  []string
 }
 
 // New returns a Watcher rooted at root. det is used for ML detection
-// on changed files (may be nil). The initial scan populates the cache.
+// (may be nil). The initial scan populates the hashmap and allSeen.
 func New(root string, det *detector.Detector) (*Watcher, error) {
 	w := &Watcher{
-		root:    root,
-		det:     det,
-		files:   make(map[string]*cachedFile),
-		allSeen: make(map[string]struct{}),
+		root:     root,
+		det:      det,
+		files:    make(map[string]*fileInfo),
+		allSeen:  make(map[string]struct{}),
+		checkMin: 1 * time.Second,
 	}
-	if _, err := w.Scan(); err != nil {
+	w.mu.Lock()
+	_, err := w.scanLocked()
+	w.mu.Unlock()
+	if err != nil {
 		return nil, err
 	}
 	return w, nil
 }
 
-// Scan walks the tree, re-parses changed or new credential files,
-// and returns any secret values not seen in previous Scan calls.
-func (w *Watcher) Scan() ([]string, error) {
-	newFiles := make(map[string]bool)
-	var newSecrets []string
+// Check walks the tree and re-parses credential files whose modTime
+// has changed or that are not yet tracked in the hashmap.
+// Returns secret values not seen in previous Check calls.
+// A 1-second debounce prevents redundant work on rapid successive calls.
+func (w *Watcher) Check() ([]string, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	if time.Since(w.lastCheck) < w.checkMin {
+		return nil, nil
+	}
+	w.lastCheck = time.Now()
+	return w.scanLocked()
+}
+
+// scanLocked walks the tree, re-parses changed/new credential files,
+// and returns secret values not seen before.
+// Caller must hold w.mu.
+func (w *Watcher) scanLocked() ([]string, error) {
+	seenPaths := make(map[string]bool)
 
 	err := filepath.WalkDir(w.root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -65,7 +87,7 @@ func (w *Watcher) Scan() ([]string, error) {
 			return nil
 		}
 
-		newFiles[path] = true
+		seenPaths[path] = true
 		ext := strings.ToLower(filepath.Ext(path))
 		if sourceCodeExts[ext] {
 			return nil
@@ -75,28 +97,23 @@ func (w *Watcher) Scan() ([]string, error) {
 			return nil
 		}
 
-		// Stat to check modtime
 		info, err := d.Info()
 		if err != nil {
 			return nil
 		}
 		modTime := info.ModTime().UnixNano()
-		size := info.Size()
 
-		// Check cache
-		if cached, ok := w.files[path]; ok && cached.modTime == modTime && cached.size == size {
-			return nil // unchanged
+		if fi, ok := w.files[path]; ok && fi.modTime == modTime {
+			return nil
 		}
 
-		// Parse file
 		vals, err := parseCredentialFile(path, w.det)
 		if err != nil {
-			return nil // best-effort
+			return nil
 		}
 
-		w.files[path] = &cachedFile{
+		w.files[path] = &fileInfo{
 			modTime: modTime,
-			size:    size,
 			values:  vals,
 		}
 		return nil
@@ -106,31 +123,28 @@ func (w *Watcher) Scan() ([]string, error) {
 		return nil, err
 	}
 
-	// Collect all values from all cached files
 	current := make(map[string]struct{})
-	for _, cf := range w.files {
-		for _, v := range cf.values {
+	for _, fi := range w.files {
+		for _, v := range fi.values {
 			if v != "" {
 				current[v] = struct{}{}
 			}
 		}
 	}
 
-	// Diff against seen history
+	var newSecrets []string
 	for v := range current {
 		if _, seen := w.allSeen[v]; !seen {
 			newSecrets = append(newSecrets, v)
 		}
 	}
 
-	// Update seen history
 	for v := range current {
 		w.allSeen[v] = struct{}{}
 	}
 
-	// Clean up cache entries for deleted files
 	for path := range w.files {
-		if !newFiles[path] {
+		if !seenPaths[path] {
 			delete(w.files, path)
 		}
 	}
@@ -175,50 +189,32 @@ func containsSkippedSegment(path string) bool {
 }
 
 var sourceCodeExts = map[string]bool{
-	// JVM
 	".java": true, ".kt": true, ".kts": true, ".groovy": true, ".scala": true,
-	// .NET
 	".cs": true, ".vb": true, ".fs": true, ".fsx": true, ".csproj": true,
 	".vbproj": true, ".fsproj": true, ".sln": true,
-	// JavaScript / TypeScript
 	".js": true, ".mjs": true, ".cjs": true, ".ts": true, ".mts": true,
 	".cts": true, ".jsx": true, ".tsx": true, ".vue": true, ".svelte": true,
-	// Python
 	".py": true, ".pyw": true, ".pyc": true, ".pyo": true,
-	// Ruby
 	".rb": true, ".rake": true, ".gemspec": true,
-	// PHP
 	".php": true, ".phtml": true,
-	// Go
 	".go": true,
-	// Rust
 	".rs": true,
-	// C / C++
 	".c": true, ".h": true, ".cpp": true, ".cc": true, ".cxx": true,
 	".hpp": true, ".hh": true,
-	// Swift / Objective-C
 	".swift": true, ".m": true, ".mm": true,
-	// Shell
 	".sh": true, ".bash": true, ".zsh": true, ".fish": true, ".ps1": true,
 	".psm1": true, ".psd1": true,
-	// Web / markup
 	".html": true, ".htm": true, ".css": true, ".scss": true, ".sass": true,
 	".less": true, ".xml": true, ".xhtml": true, ".xsl": true, ".xslt": true,
-	// Compiled / binary artifacts
 	".class": true, ".jar": true, ".war": true, ".ear": true,
 	".o": true, ".obj": true, ".a": true,
 	".lib": true, ".dll": true, ".so": true, ".dylib": true, ".exe": true,
-	// Lock files / generated
 	".lock": true, ".sum": true,
-	// Docs / templates
 	".md": true, ".mdx": true, ".rst": true, ".txt": true, ".adoc": true,
 	".tex": true, ".ipynb": true,
-	// Images / media
 	".png": true, ".jpg": true, ".jpeg": true, ".gif": true, ".svg": true,
 	".ico": true, ".webp": true, ".mp4": true, ".mp3": true, ".pdf": true,
 }
-
-// credential filename patterns
 
 var credentialEnvNames = map[string]bool{
 	".env": true, ".envrc": true,
@@ -308,8 +304,6 @@ func isCredentialFile(path, ext string) bool {
 	}
 }
 
-// parseCredentialFile reads a credential file and returns all secret values.
-// Uses heuristic + ML detection, same as parser.DiscoverSecrets.
 func parseCredentialFile(path string, det *detector.Detector) ([]string, error) {
 	var parsed map[string]string
 	var commented map[string]string
@@ -343,7 +337,6 @@ func parseCredentialFile(path string, det *detector.Detector) ([]string, error) 
 
 	seen := make(map[string]struct{})
 
-	// Heuristic: collect values that pass IsLikelySecret
 	for _, vals := range []map[string]string{parsed, commented} {
 		for _, v := range vals {
 			if parser.IsLikelySecret(v) {
@@ -352,7 +345,6 @@ func parseCredentialFile(path string, det *detector.Detector) ([]string, error) 
 		}
 	}
 
-	// ML detection on raw content (only if file was actually parsed)
 	if det != nil && det.Available() && parsed != nil {
 		raw, readErr := os.ReadFile(path)
 		if readErr == nil {
