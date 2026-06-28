@@ -113,10 +113,10 @@ var sourceCodeExts = map[string]bool{
 }
 
 // mergeInto adds values from src into dst, deduplicating per key.
-// Values that do not pass isLikelySecret are skipped.
+// Values that do not pass IsLikelySecret are skipped.
 func mergeInto(dst map[string][]string, src map[string]string) {
 	for k, v := range src {
-		if !isLikelySecret(v) {
+		if !IsLikelySecret(v) {
 			continue
 		}
 		already := false
@@ -217,7 +217,7 @@ func DiscoverSecrets(root string, det *detector.Detector) (map[string][]string, 
 				mlSecrets, mlErr := det.DetectFromContent(string(raw))
 				if mlErr == nil {
 					for _, s := range mlSecrets {
-						if s == "" || !isLikelySecret(s) {
+						if s == "" || !IsLikelySecret(s) {
 							continue
 						}
 						already := false
@@ -409,13 +409,13 @@ func looksLikeEnvFile(path string) bool {
 	return false
 }
 
-// isLikelySecret returns true if a value looks like a real secret credential.
+// IsLikelySecret returns true if a value looks like a real secret credential.
 // It uses a positive signal approach: values must show characteristics of real
 // secrets (sufficient length + entropy markers) rather than just "not obviously not a secret".
-func isLikelySecret(v string) bool {
-	// Must be printable ASCII only — binary data is never a secret we want to redact
+func IsLikelySecret(v string) bool {
+	// Must not contain ASCII control characters — these indicate binary data
 	for _, c := range v {
-		if c < 0x20 || c > 0x7e {
+		if c < 0x20 || c == 0x7f {
 			return false
 		}
 	}
@@ -437,6 +437,11 @@ func isLikelySecret(v string) bool {
 
 	// Skip cron expressions (contain digits and */- patterns)
 	if strings.Contains(v, "* * * *") || strings.Contains(v, "*/") {
+		return false
+	}
+
+	// Tool call IDs like "call_abc123" are API identifiers, not secrets.
+	if strings.HasPrefix(v, "call_") || strings.HasPrefix(v, "toolu_") {
 		return false
 	}
 
@@ -480,7 +485,7 @@ func isLikelySecret(v string) bool {
 			hasUpper = true
 		case c >= 'a' && c <= 'z':
 			hasLower = true
-		case c == '.' || c == '-' || c == '_' || c == '/' || c == ':' || c == '@':
+		case c == ' ' || c == '.' || c == '-' || c == '_' || c == '/' || c == ':' || c == '@':
 			// allowed config chars — keep onlyConfigChars true
 		default:
 			hasSpecial = true
@@ -512,6 +517,28 @@ func isLikelySecret(v string) bool {
 	// Short values with no special chars or digits are not secrets
 	if !hasDigit && !hasSpecial && len(v) < 20 {
 		return false
+	}
+
+	// Dot-separated config paths (Spring property keys, Java class names, etc.)
+	// are not secrets. They consist of alphabetic words separated by dots.
+	// Each segment may contain at most one embedded digit (e.g. "Resilience4j").
+	if !hasSpecial && strings.Contains(v, ".") && len(v) >= 10 {
+		isConfigPath := true
+		for _, seg := range strings.Split(v, ".") {
+			dCount := 0
+			for _, c := range seg {
+				if c >= '0' && c <= '9' {
+					dCount++
+				}
+			}
+			if dCount > 1 {
+				isConfigPath = false
+				break
+			}
+		}
+		if isConfigPath {
+			return false
+		}
 	}
 
 	// Require at least some complexity: either special chars, or mixed case+digits, or long enough.

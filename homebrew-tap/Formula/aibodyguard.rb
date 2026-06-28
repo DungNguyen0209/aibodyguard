@@ -1,7 +1,7 @@
 class Aibodyguard < Formula
   desc "Credential leak prevention wrapper for AI coding agents"
   homepage "https://github.com/DungNguyen0209/aibodyguard"
-  version "0.2.0"
+  version "0.5.3"
   license "MIT"
 
   on_macos do

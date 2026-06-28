@@ -18,6 +18,7 @@ import (
 	"github.com/DungNguyen0209/aibodyguard/internal/modelcache"
 	"github.com/DungNguyen0209/aibodyguard/internal/parser"
 	"github.com/DungNguyen0209/aibodyguard/internal/scanner"
+	"github.com/DungNguyen0209/aibodyguard/internal/watcher"
 	uninstallpkg "github.com/DungNguyen0209/aibodyguard/internal/uninstall"
 )
 
@@ -155,8 +156,18 @@ func main() {
 		}
 	}
 
-	// Start TLS MITM proxy
-	s := scanner.New(secrets)
+	// Start TLS MITM proxy with runtime ML detection
+	s := scanner.NewMLScanner(secrets, det, logWriter)
+
+	// Start credential file watcher — re-scans on each proxy request
+	w, wErr := watcher.New(cwd, det)
+	if wErr != nil {
+		fmt.Fprintf(logWriter, "[aibodyguard] watcher init error: %v (file watching disabled)\n", wErr)
+	} else {
+		s.SetWatcher(w)
+		fmt.Fprintf(logWriter, "[aibodyguard] file watcher active (request-driven)\n")
+	}
+
 	reqLogPath := filepath.Join(os.TempDir(), fmt.Sprintf("aibodyguard-%d-requests.log", pid))
 	p, err := mitm.New(s, logWriter, &mitm.Config{
 		EnableRequestLog: testMode,
